@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js",
-    "import:swims": "node scripts/import_swims_data.js"
+    "import:swims": "node scripts/import_swims_data.js",
+    "studio": "npx drizzle-kit studio"
   },
   "keywords": [],
   "author": "",

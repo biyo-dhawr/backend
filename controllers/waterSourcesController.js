@@ -15,6 +15,7 @@ import {
   villages,
   waterSources,
 } from "../db/schema.js";
+import { clearAdminWaterSourcesCache } from "../utils/adminWaterSourcesCache.js";
 
 function parsePositiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   const parsed = Number.parseInt(value, 10);
@@ -209,6 +210,7 @@ export const create = async (req, res) => {
       .values(values)
       .returning();
 
+    clearAdminWaterSourcesCache();
     return res.status(201).json(source);
   } catch (error) {
     console.error("POST /water-sources error:", error);
@@ -258,6 +260,7 @@ export const updateStatus = async (req, res) => {
       return res.status(404).json({ message: "Water source not found" });
     }
 
+    clearAdminWaterSourcesCache();
     return res.json(source);
   } catch (error) {
     console.error("PATCH /water-sources/:id/status error:", error);
@@ -281,6 +284,7 @@ export const deleteSource = async (req, res) => {
       return res.status(404).json({ message: "Water source not found" });
     }
 
+    clearAdminWaterSourcesCache();
     return res.json({ message: "Water source deleted" });
   } catch (error) {
     if (isForeignKeyViolation(error)) {

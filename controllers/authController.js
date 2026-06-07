@@ -5,7 +5,7 @@ import { createUser, findUserByEmail } from "../models/authModel.js";
 const VALID_ROLES = new Set([
   "ADMIN",
   "GOVERNMENT",
-  "NGO_WORKER",
+  "VILLAGE_LEADER",
   "COMMUNITY_MEMBER",
 ]);
 
