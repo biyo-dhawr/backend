@@ -523,15 +523,15 @@ Optional filters:
 
 | Parameter | Values                                                     |
 | --------- | ---------------------------------------------------------- |
-| `status`  | `functional`, `needs_repair`, `non_functional`             |
+| `status`  | `Working`, `Needed Maintenance`, `Broken`                  |
 | `type`    | Exact source type such as `Borehole`, `Dam`, or `Dug Well` |
 
 Examples:
 
 ```text
-/api/admin/water-sources?status=functional
+/api/admin/water-sources?status=Working
 /api/admin/water-sources?type=Borehole
-/api/admin/water-sources?status=non_functional&type=Borehole
+/api/admin/water-sources?status=Broken&type=Borehole
 ```
 
 Response:
@@ -560,7 +560,8 @@ Response:
                 "id": 1000,
                 "source_name": "Example Borehole",
                 "water_source_type": "Borehole",
-                "status": "functional",
+                "status": "Working",
+                "water_level": 100,
                 "lat": 9.94,
                 "lng": 43.19
               }
@@ -600,8 +601,7 @@ Response:
       "village": "Example Village",
       "count": 20,
       "functional": 16,
-      "nonFunctional": 4,
-      "population": 10000
+      "nonFunctional": 4
     }
   ],
   "sourceTypeData": [

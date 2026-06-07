@@ -17,18 +17,6 @@ export async function ensureDatabase() {
   try {
     console.log("Verifying database connection...");
     await db.execute(sql`SELECT 1`);
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS districts_region_id_idx ON districts (region_id)`,
-    );
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS villages_district_id_idx ON villages (district_id)`,
-    );
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS water_sources_village_id_idx ON water_sources (village_id)`,
-    );
-    await db.execute(
-      sql`CREATE INDEX IF NOT EXISTS water_sources_type_status_village_idx ON water_sources (type, status, village_id)`,
-    );
     console.log("Database connection established successfully.");
   } catch (error) {
     console.error("Database connection failed!");

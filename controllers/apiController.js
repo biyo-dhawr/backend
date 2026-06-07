@@ -1,10 +1,4 @@
-import {
-  and,
-  count,
-  desc,
-  eq,
-  inArray,
-} from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   alerts,
@@ -33,13 +27,6 @@ function parseId(value) {
 
 function randomItem(items) {
   return items[Math.floor(Math.random() * items.length)];
-}
-
-function mapAdminStatus(status) {
-  if (status === "Working") return "functional";
-  if (status === "Needed Maintenance") return "needs_repair";
-  if (status === "Broken") return "non_functional";
-  return status?.toLowerCase().replace(/\s+/g, "_") || "functional";
 }
 
 function sendServerError(res, label, error) {
@@ -99,8 +86,7 @@ export const getVillages = async (req, res) => {
 
 export const getAlerts = async (req, res) => {
   try {
-    const activeOnly =
-      String(req.query.active ?? "").toLowerCase() === "true";
+    const activeOnly = String(req.query.active ?? "").toLowerCase() === "true";
     const rows = await db
       .select()
       .from(alerts)
@@ -128,10 +114,8 @@ export const createAlert = async (req, res) => {
       severity,
     } = req.body ?? {};
     const parsedVillageId = parseId(villageId ?? legacyVillageId);
-    const trimmedMessage =
-      typeof message === "string" ? message.trim() : "";
-    const trimmedSeverity =
-      typeof severity === "string" ? severity.trim() : "";
+    const trimmedMessage = typeof message === "string" ? message.trim() : "";
+    const trimmedSeverity = typeof severity === "string" ? severity.trim() : "";
 
     if (!parsedVillageId || !trimmedMessage || !trimmedSeverity) {
       return res.status(400).json({
@@ -264,29 +248,25 @@ export const updateRisk = async (_req, res) => {
 
 export const getDashboardStats = async (_req, res) => {
   try {
-    const [
-      [sourceCount],
-      [pendingCount],
-      [criticalCount],
-      recentRows,
-    ] = await Promise.all([
-      db.select({ value: count() }).from(waterSources),
-      db
-        .select({ value: count() })
-        .from(reports)
-        .where(eq(reports.isVerified, false)),
-      db
-        .select({ value: count() })
-        .from(villages)
-        .where(inArray(villages.droughtRiskLevel, ["High", "Severe"])),
-      db
-        .select()
-        .from(reports)
-        .leftJoin(villages, eq(reports.villageId, villages.id))
-        .leftJoin(waterSources, eq(reports.waterSourceId, waterSources.id))
-        .orderBy(desc(reports.createdAt), desc(reports.id))
-        .limit(5),
-    ]);
+    const [[sourceCount], [pendingCount], [criticalCount], recentRows] =
+      await Promise.all([
+        db.select({ value: count() }).from(waterSources),
+        db
+          .select({ value: count() })
+          .from(reports)
+          .where(eq(reports.isVerified, false)),
+        db
+          .select({ value: count() })
+          .from(villages)
+          .where(inArray(villages.droughtRiskLevel, ["High", "Severe"])),
+        db
+          .select()
+          .from(reports)
+          .leftJoin(villages, eq(reports.villageId, villages.id))
+          .leftJoin(waterSources, eq(reports.waterSourceId, waterSources.id))
+          .orderBy(desc(reports.createdAt), desc(reports.id))
+          .limit(5),
+      ]);
 
     return res.json({
       totalSources: sourceCount.value,
@@ -314,17 +294,10 @@ export const getAdminWaterSources = async (req, res) => {
       return res.type("application/json").send(cached);
     }
 
-    const databaseStatus = {
-      functional: "Working",
-      needs_repair: "Needed Maintenance",
-      non_functional: "Broken",
-    }[statusFilter];
-    const sourceJoinConditions = [
-      eq(waterSources.villageId, villages.id),
-    ];
+    const sourceJoinConditions = [eq(waterSources.villageId, villages.id)];
 
-    if (databaseStatus) {
-      sourceJoinConditions.push(eq(waterSources.status, databaseStatus));
+    if (statusFilter) {
+      sourceJoinConditions.push(eq(waterSources.status, statusFilter));
     }
     if (typeFilter) {
       sourceJoinConditions.push(eq(waterSources.type, typeFilter));
@@ -342,6 +315,7 @@ export const getAdminWaterSources = async (req, res) => {
         sourceName: waterSources.name,
         sourceType: waterSources.type,
         sourceStatus: waterSources.status,
+        sourceWaterLevel: waterSources.waterLevel,
         latitude: waterSources.latitude,
         longitude: waterSources.longitude,
       })
@@ -396,22 +370,23 @@ export const getAdminWaterSources = async (req, res) => {
       }
       if (!row.sourceId) continue;
 
-      const mappedStatus = mapAdminStatus(row.sourceStatus);
-      if (statusFilter && mappedStatus !== statusFilter) continue;
+      const sourceStatus = row.sourceStatus;
+      if (statusFilter && sourceStatus !== statusFilter) continue;
       if (typeFilter && row.sourceType !== typeFilter) continue;
 
       village.sources.push({
         id: row.sourceId,
         source_name: row.sourceName,
         water_source_type: row.sourceType,
-        status: mappedStatus,
+        status: sourceStatus,
+        water_level: row.sourceWaterLevel,
         lat: row.latitude,
         lng: row.longitude,
       });
       village.totalSources++;
-      if (mappedStatus === "functional") village.functional++;
-      if (mappedStatus === "needs_repair") village.needsRepair++;
-      if (mappedStatus === "non_functional") village.nonFunctional++;
+      if (sourceStatus === "Working") village.functional++;
+      if (sourceStatus === "Needed Maintenance") village.needsRepair++;
+      if (sourceStatus === "Broken") village.nonFunctional++;
     }
 
     const data = [...regionMap.values()].map((region) => {
@@ -510,14 +485,12 @@ export const getAnalyticsData = async (_req, res) => {
       const current = villageMap.get(item.villageId) ?? {
         village: item.village,
         count: 0,
-        functional: 0,
-        nonFunctional: 0,
-        population: 0,
+        working: 0,
+        broken: 0,
       };
       current.count += item.value;
-      if (item.status === "Working") current.functional += item.value;
-      if (item.status === "Broken") current.nonFunctional += item.value;
-      current.population = current.count * 500;
+      if (item.status === "Working") current.working += item.value;
+      if (item.status === "Broken") current.broken += item.value;
       villageMap.set(item.villageId, current);
     }
 
@@ -531,10 +504,12 @@ export const getAnalyticsData = async (_req, res) => {
       const current = typeMap.get(type) ?? {
         type,
         count: 0,
-        functional: 0,
+        working: 0,
+        broken: 0,
       };
       current.count += item.value;
-      if (item.status === "Working") current.functional += item.value;
+      if (item.status === "Working") current.working += item.value;
+      if (item.status === "Broken") current.broken += item.value;
       typeMap.set(type, current);
     }
 
@@ -542,10 +517,6 @@ export const getAnalyticsData = async (_req, res) => {
       statusData,
       villageData,
       sourceTypeData: [...typeMap.values()],
-      trendData: [
-        { month: "Jan", functional: 150, nonFunctional: 50, repairs: 20 },
-        { month: "Feb", functional: 155, nonFunctional: 45, repairs: 25 },
-      ],
     });
   } catch (error) {
     return sendServerError(res, "GET /analytics error:", error);
