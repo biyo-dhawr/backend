@@ -13,19 +13,19 @@ router.get("/", getAll);
 router.post(
   "/",
   authenticate,
-  authorize(["ADMIN", "GOVERNMENT", "VILLAGE_LEADER"]),
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   create,
 );
 router.patch(
   "/:id/status",
   authenticate,
-  authorize(["ADMIN", "GOVERNMENT", "VILLAGE_LEADER"]),
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   updateStatus,
 );
 router.delete(
   "/:id",
   authenticate,
-  authorize(["ADMIN", "GOVERNMENT", "VILLAGE_LEADER"]),
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   deleteSource,
 );
 

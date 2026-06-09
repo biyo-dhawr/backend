@@ -30,14 +30,13 @@ The JWT expires after 24 hours.
 
 ## Roles
 
-| Role               | Description                      |
-| ------------------ | -------------------------------- |
-| `ADMIN`            | Full staff access                |
-| `GOVERNMENT`       | Staff access                     |
-| `VILLAGE_LEADER`   | Staff access                     |
-| `COMMUNITY_MEMBER` | Can submit authenticated reports |
+| Role                | Description                      |
+| ------------------- | -------------------------------- |
+| `GOVERNMENT WORKER` | Full government staff access     |
+| `VILLAGE LEADER`    | Staff access                     |
+| `COMMUNITY MEMBER`  | Can submit authenticated reports |
 
-In this guide, **staff** means `ADMIN`, `GOVERNMENT`, or `VILLAGE_LEADER`.
+In this guide, **staff** means `GOVERNMENT WORKER` or `VILLAGE LEADER`.
 
 ## Endpoint Summary
 
@@ -61,7 +60,7 @@ In this guide, **staff** means `ADMIN`, `GOVERNMENT`, or `VILLAGE_LEADER`.
 | `PATCH`  | `/api/reports/:id/verify`       | Staff         |
 | `DELETE` | `/api/reports/:id`              | Staff         |
 | `GET`    | `/api/dashboard/stats`          | Staff         |
-| `GET`    | `/api/admin/water-sources`      | Staff         |
+| `GET`    | `/api/government/water-sources` | Staff         |
 | `GET`    | `/api/analytics`                | Staff         |
 | `POST`   | `/api/sms`                      | Staff         |
 | `POST`   | `/api/simulation/risk`          | Staff         |
@@ -81,7 +80,7 @@ Body:
   "email": "user@example.com",
   "password": "password123",
   "fullName": "Example User",
-  "role": "COMMUNITY_MEMBER",
+  "role": "COMMUNITY MEMBER",
   "ngoId": null
 }
 ```
@@ -92,7 +91,7 @@ Required:
 - `password` with at least 8 characters
 - `fullName`
 
-`role` defaults to `COMMUNITY_MEMBER`. Role input is converted to uppercase.
+`role` defaults to `COMMUNITY MEMBER`.
 
 Success (`201`):
 
@@ -103,7 +102,7 @@ Success (`201`):
     "id": "7a681c0e-6d16-4201-8093-d1cab2274567",
     "email": "user@example.com",
     "fullName": "Example User",
-    "role": "COMMUNITY_MEMBER",
+    "role": "COMMUNITY MEMBER",
     "ngoId": null
   }
 }
@@ -139,7 +138,7 @@ Success (`200`):
     "id": "7a681c0e-6d16-4201-8093-d1cab2274567",
     "email": "user@example.com",
     "fullName": "Example User",
-    "role": "COMMUNITY_MEMBER",
+    "role": "COMMUNITY MEMBER",
     "ngoId": null
   }
 }
@@ -516,7 +515,7 @@ Response:
 Staff only:
 
 ```http
-GET /api/admin/water-sources
+GET /api/government/water-sources
 ```
 
 Optional filters:
@@ -529,9 +528,9 @@ Optional filters:
 Examples:
 
 ```text
-/api/admin/water-sources?status=Working
-/api/admin/water-sources?type=Borehole
-/api/admin/water-sources?status=Broken&type=Borehole
+/api/government/water-sources?status=Working
+/api/government/water-sources?type=Borehole
+/api/government/water-sources?status=Broken&type=Borehole
 ```
 
 Response:

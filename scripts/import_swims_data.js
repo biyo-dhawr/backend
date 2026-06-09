@@ -16,15 +16,7 @@ import {
 } from "../db/schema.js";
 
 const CSV_FILES = ["SWIMS_LiveMap_Dataset_20260602-001839.csv"];
-const TARGET_REGIONS = new Set([
-  "Awdal",
-  "Togdheer",
-  "Woqooyi Galbeed",
-  "Sanaag",
-  "Sool",
-  "Maroodi Jeex",
-  "Saaxil",
-]);
+const TARGET_REGIONS = new Set(["Awdal"]);
 const MAX_IMPORT_COUNT = 1000;
 
 const regionCache = new Map();
@@ -37,7 +29,9 @@ function normalize(value) {
 }
 
 function cacheKey(...parts) {
-  return parts.map((part) => normalize(part).toLocaleLowerCase()).join("\u0000");
+  return parts
+    .map((part) => normalize(part).toLocaleLowerCase())
+    .join("\u0000");
 }
 
 function mapRegion(region, district) {
@@ -313,7 +307,10 @@ async function processFile(filePath, currentTotal) {
       importedCount++;
     } catch (error) {
       skippedCount++;
-      console.error(`Failed to import CSV record ${recordNumber}:`, error.message);
+      console.error(
+        `Failed to import CSV record ${recordNumber}:`,
+        error.message,
+      );
     }
   }
 

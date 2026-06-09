@@ -9,10 +9,10 @@ import {
   waterSources,
 } from "../db/schema.js";
 import {
-  clearAdminWaterSourcesCache,
-  getAdminWaterSourcesCache,
-  setAdminWaterSourcesCache,
-} from "../utils/adminWaterSourcesCache.js";
+  clearGovernmentWaterSourcesCache,
+  getGovernmentWaterSourcesCache,
+  setGovernmentWaterSourcesCache,
+} from "../utils/governmentWaterSourcesCache.js";
 
 const RISK_LEVELS = ["Low", "Medium", "High", "Severe"];
 
@@ -239,7 +239,7 @@ export const updateRisk = async (_req, res) => {
       return updates.join(" ");
     });
 
-    clearAdminWaterSourcesCache();
+    clearGovernmentWaterSourcesCache();
     return res.json({ success: true, summary });
   } catch (error) {
     return sendServerError(res, "POST /simulation/risk error:", error);
@@ -283,12 +283,12 @@ export const getDashboardStats = async (_req, res) => {
   }
 };
 
-export const getAdminWaterSources = async (req, res) => {
+export const getGovernmentWaterSources = async (req, res) => {
   try {
     const statusFilter = String(req.query.status ?? "").trim();
     const typeFilter = String(req.query.type ?? "").trim();
     const cacheKey = JSON.stringify([statusFilter, typeFilter]);
-    const cached = getAdminWaterSourcesCache(cacheKey);
+    const cached = getGovernmentWaterSourcesCache(cacheKey);
 
     if (cached) {
       return res.type("application/json").send(cached);
@@ -431,10 +431,10 @@ export const getAdminWaterSources = async (req, res) => {
       return region;
     });
 
-    setAdminWaterSourcesCache(cacheKey, JSON.stringify(data));
+    setGovernmentWaterSourcesCache(cacheKey, JSON.stringify(data));
     return res.json(data);
   } catch (error) {
-    return sendServerError(res, "GET /admin/water-sources error:", error);
+    return sendServerError(res, "GET /government/water-sources error:", error);
   }
 };
 
@@ -532,6 +532,6 @@ export default {
   sendSms,
   updateRisk,
   getDashboardStats,
-  getAdminWaterSources,
+  getGovernmentWaterSources,
   getAnalyticsData,
 };

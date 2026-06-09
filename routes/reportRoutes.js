@@ -12,7 +12,7 @@ const router = Router();
 router.get(
   "/",
   authenticate,
-  authorize(["ADMIN", "GOVERNMENT", "VILLAGE_LEADER"]),
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   getAll,
 );
 router.post("/submit/secure", authenticate, create);
@@ -21,13 +21,13 @@ router.post("/submit/public", create);
 router.patch(
   "/:id/verify",
   authenticate,
-  authorize(["ADMIN", "GOVERNMENT", "VILLAGE_LEADER"]),
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   verifyReport,
 );
 router.delete(
   "/:id",
   authenticate,
-  authorize(["ADMIN", "GOVERNMENT", "VILLAGE_LEADER"]),
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   deleteReport,
 );
 

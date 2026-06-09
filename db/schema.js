@@ -13,10 +13,9 @@ import {
 
 // 1. Define the Enum (Matches your "user_role" enum in Postgres)
 export const userRoleEnum = pgEnum("user_role", [
-  "ADMIN",
-  "GOVERNMENT",
-  "VILLAGE_LEADER",
-  "COMMUNITY_MEMBER",
+  "GOVERNMENT WORKER",
+  "VILLAGE LEADER",
+  "COMMUNITY MEMBER",
 ]);
 
 // 2. NGOs Table
@@ -33,7 +32,7 @@ export const profiles = pgTable("profiles", {
   fullName: text("full_name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash"),
-  role: userRoleEnum("role").default("COMMUNITY_MEMBER").notNull(),
+  role: userRoleEnum("role").default("COMMUNITY MEMBER").notNull(),
   ngoId: integer("ngo_id").references(() => ngos.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

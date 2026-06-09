@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   createAlert,
-  getAdminWaterSources,
+  getGovernmentWaterSources,
   getAlerts,
   getAnalyticsData,
   getDashboardStats,
@@ -14,7 +14,7 @@ import {
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
 const router = Router();
-const staffOnly = authorize(["ADMIN", "GOVERNMENT", "VILLAGE_LEADER"]);
+const staffOnly = authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]);
 
 router.get("/regions", getRegions);
 router.get("/districts", getDistricts);
@@ -26,10 +26,10 @@ router.post("/sms", authenticate, staffOnly, sendSms);
 router.post("/simulation/risk", authenticate, staffOnly, updateRisk);
 router.get("/dashboard/stats", authenticate, staffOnly, getDashboardStats);
 router.get(
-  "/admin/water-sources",
+  "/government/water-sources",
   authenticate,
   staffOnly,
-  getAdminWaterSources,
+  getGovernmentWaterSources,
 );
 router.get("/analytics", authenticate, staffOnly, getAnalyticsData);
 

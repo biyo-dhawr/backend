@@ -2,12 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { createUser, findUserByEmail } from "../models/authModel.js";
 
-const VALID_ROLES = new Set([
-  "ADMIN",
-  "GOVERNMENT",
-  "VILLAGE_LEADER",
-  "COMMUNITY_MEMBER",
-]);
+const PUBLIC_REGISTRATION_ROLE = "COMMUNITY MEMBER";
 
 function publicUser(user) {
   return {
@@ -25,13 +20,14 @@ export const register = async (req, res) => {
       email,
       password,
       fullName,
-      role = "COMMUNITY_MEMBER",
+      role,
       ngoId,
       ngo_id: legacyNgoId,
     } = req.body ?? {};
     const normalizedEmail = email?.trim().toLowerCase();
     const normalizedName = fullName?.trim();
-    const uppercaseRole = role?.trim().toUpperCase() || "COMMUNITY_MEMBER";
+    const uppercaseRole =
+      String(role).trim().toUpperCase() || PUBLIC_REGISTRATION_ROLE;
 
     if (!normalizedEmail || !normalizedName || !password) {
       return res
@@ -42,9 +38,6 @@ export const register = async (req, res) => {
       return res
         .status(400)
         .json({ message: "Password must be at least 8 characters" });
-    }
-    if (!VALID_ROLES.has(uppercaseRole)) {
-      return res.status(400).json({ message: "Invalid role" });
     }
 
     const existingUser = await findUserByEmail(normalizedEmail);
