@@ -48,18 +48,13 @@ export const getAll = async (req, res) => {
     const page = parsePositiveInteger(req.query.page, 1);
     const limit = parsePositiveInteger(req.query.limit, 20, 100);
     const offset = (page - 1) * limit;
-    const search = String(req.query.search ?? "").trim();
-    const regionId =
-      req.query.regionId === undefined ? null : parseId(req.query.regionId);
-    const districtId =
-      req.query.districtId === undefined
-        ? null
-        : parseId(req.query.districtId);
-    const villageId =
-      req.query.villageId === undefined
-        ? null
-        : parseId(req.query.villageId);
-    const status = String(req.query.status ?? "").trim();
+    
+    // Safely extract and trim query params
+    const search = req.query.search ? String(req.query.search).trim() : "";
+    const region = req.query.region ? String(req.query.region).trim() : "";
+    const district = req.query.district ? String(req.query.district).trim() : "";
+    const status = req.query.status ? String(req.query.status).trim().toLowerCase() : "";
+    
     const conditions = [];
 
     if (req.query.regionId !== undefined && !regionId) {
@@ -91,9 +86,16 @@ export const getAll = async (req, res) => {
       );
     }
     if (status) {
-      conditions.push(eq(waterSources.status, status));
+      conditions.push(ilike(waterSources.status, status));
     }
-    const where = conditions.length ? and(...conditions) : undefined;
+    if (district) {
+      conditions.push(ilike(districts.name, `%${district}%`));
+    }
+    if (region) {
+      conditions.push(ilike(regions.name, `%${region}%`));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
     const baseQuery = () =>
       db
         .select()
@@ -162,7 +164,7 @@ export const getAll = async (req, res) => {
     });
   } catch (error) {
     console.error("GET /water-sources error:", error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ error: error.message });
   }
 };
 
