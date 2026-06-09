@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ilike } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   alerts,
@@ -31,7 +31,7 @@ function randomItem(items) {
 
 function sendServerError(res, label, error) {
   console.error(label, error);
-  return res.status(500).json({ message: "Server error" });
+  return res.status(500).json({ error: error.message });
 }
 
 export const getRegions = async (_req, res) => {
@@ -285,8 +285,8 @@ export const getDashboardStats = async (_req, res) => {
 
 export const getGovernmentWaterSources = async (req, res) => {
   try {
-    const statusFilter = String(req.query.status ?? "").trim();
-    const typeFilter = String(req.query.type ?? "").trim();
+    const statusFilter = req.query.status ? String(req.query.status).trim() : "";
+    const typeFilter = req.query.type ? String(req.query.type).trim() : "";
     const cacheKey = JSON.stringify([statusFilter, typeFilter]);
     const cached = getGovernmentWaterSourcesCache(cacheKey);
 
@@ -297,10 +297,10 @@ export const getGovernmentWaterSources = async (req, res) => {
     const sourceJoinConditions = [eq(waterSources.villageId, villages.id)];
 
     if (statusFilter) {
-      sourceJoinConditions.push(eq(waterSources.status, statusFilter));
+      sourceJoinConditions.push(ilike(waterSources.status, statusFilter));
     }
     if (typeFilter) {
-      sourceJoinConditions.push(eq(waterSources.type, typeFilter));
+      sourceJoinConditions.push(ilike(waterSources.type, typeFilter));
     }
 
     const rows = await db
@@ -371,8 +371,8 @@ export const getGovernmentWaterSources = async (req, res) => {
       if (!row.sourceId) continue;
 
       const sourceStatus = row.sourceStatus;
-      if (statusFilter && sourceStatus !== statusFilter) continue;
-      if (typeFilter && row.sourceType !== typeFilter) continue;
+      if (statusFilter && sourceStatus?.toLowerCase() !== statusFilter.toLowerCase()) continue;
+      if (typeFilter && row.sourceType?.toLowerCase() !== typeFilter.toLowerCase()) continue;
 
       village.sources.push({
         id: row.sourceId,

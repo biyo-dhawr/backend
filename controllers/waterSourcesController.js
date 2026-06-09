@@ -48,10 +48,13 @@ export const getAll = async (req, res) => {
     const page = parsePositiveInteger(req.query.page, 1);
     const limit = parsePositiveInteger(req.query.limit, 20, 100);
     const offset = (page - 1) * limit;
-    const search = String(req.query.search ?? "").trim();
-    const region = String(req.query.region ?? "").trim();
-    const district = String(req.query.district ?? "").trim();
-    const status = String(req.query.status ?? "").trim();
+    
+    // Safely extract and trim query params
+    const search = req.query.search ? String(req.query.search).trim() : "";
+    const region = req.query.region ? String(req.query.region).trim() : "";
+    const district = req.query.district ? String(req.query.district).trim() : "";
+    const status = req.query.status ? String(req.query.status).trim().toLowerCase() : "";
+    
     const conditions = [];
 
     if (search) {
@@ -65,16 +68,16 @@ export const getAll = async (req, res) => {
       );
     }
     if (status) {
-      conditions.push(eq(waterSources.status, status));
+      conditions.push(ilike(waterSources.status, status));
     }
     if (district) {
-      conditions.push(eq(districts.name, district));
+      conditions.push(ilike(districts.name, `%${district}%`));
     }
     if (region) {
-      conditions.push(eq(regions.name, region));
+      conditions.push(ilike(regions.name, `%${region}%`));
     }
 
-    const where = conditions.length ? and(...conditions) : undefined;
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
     const baseQuery = () =>
       db
         .select()
@@ -143,7 +146,7 @@ export const getAll = async (req, res) => {
     });
   } catch (error) {
     console.error("GET /water-sources error:", error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ error: error.message });
   }
 };
 
