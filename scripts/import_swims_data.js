@@ -15,9 +15,54 @@ import {
   waterSources,
 } from "../db/schema.js";
 
-const CSV_FILES = ["SWIMS_LiveMap_Dataset_20260602-001839.csv"];
+const CSV_FILES = ["SWIMS_LiveMap_Dataset_20260608-220134.csv"];
 const TARGET_REGIONS = new Set(["Awdal"]);
 const MAX_IMPORT_COUNT = 1000;
+
+const VILLAGE_ALIASES = new Map([
+  ["baki\u0000baki town", "Baki"],
+  ["baki\u0000old baki town", "Old Baki"],
+  ["baki\u0000old bki", "Old Baki"],
+  ["baki\u0000ruqi town", "Ruqi"],
+  ["baki\u0000xoorey town", "Xoorey"],
+  ["borama\u0000afraag", "Afraaga"],
+  ["borama\u0000amuud", "Amoud"],
+  ["borama\u0000borama", "Boorama"],
+  ["borama\u0000borame", "Boorama"],
+  ["borama\u0000boorame", "Boorama"],
+  ["borama\u0000boorame town", "Boorama"],
+  ["borama\u0000camuid", "Camuud"],
+  ["borama\u0000ceel baxay", "Ceelbaxay"],
+  ["borama\u0000celbaxay", "Ceelbaxay"],
+  ["borama\u0000daremacaane", "Daremacane"],
+  ["borama\u0000darey macaan", "Daremacane"],
+  ["borama\u0000darey macaane", "Daremacane"],
+  ["borama\u0000dhamuuug", "Dhamuug"],
+  ["borama\u0000dila town", "Dila"],
+  ["borama\u0000dilla", "Dila"],
+  ["borama\u0000hol hol", "Holhol"],
+  ["borama\u0000holhol town", "Holhol"],
+  ["borama\u0000jarahoroto", "Jaaraa Horoto"],
+  ["borama\u0000magaalacad", "Magaalo Cad"],
+  ["borama\u0000qolijeed", "Quljeed"],
+  ["borama\u0000qolujeed", "Quljeed"],
+  ["borama\u0000quljed", "Quljeed"],
+  ["borama\u0000qoorgab", "Qorgaab"],
+  ["borama\u0000tuur qaylo", "Tuur Qayle"],
+  ["borama\u0000xaliimale", "Xaliimaale"],
+  ["borama\u0000xaliimaale town", "Xaliimaale"],
+  ["borama\u0000xarirad", "Xariirad"],
+  ["lughaye\u0000geeriza", "Geerisa"],
+  ["lughaye\u0000kalowla", "Kalawle"],
+  ["lughaye\u0000kalowle", "Kalawle"],
+  ["lughaye\u0000xusen", "Xuseen"],
+  ["zeylac\u0000calieweci", "Caliweci"],
+  ["zeylac\u0000habas", "Habaas"],
+  ["zeylac\u0000lantamorohda", "Laagta Morohda"],
+  ["zeylac\u0000nuur odowa", "Nuur Odawa"],
+  ["zeylac\u0000waraaboodka", "Waraabood"],
+  ["zeylac\u0000xarirad", "Xariirad"],
+]);
 
 const regionCache = new Map();
 const districtCache = new Map();
@@ -32,6 +77,24 @@ function cacheKey(...parts) {
   return parts
     .map((part) => normalize(part).toLocaleLowerCase())
     .join("\u0000");
+}
+
+function normalizeNameKey(value) {
+  return normalize(value)
+    .toLocaleLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalizeVillage(name, district) {
+  const normalizedName = normalize(name).replace(/\s+/g, " ");
+  const aliasKey = `${normalizeNameKey(district)}\u0000${normalizeNameKey(
+    normalizedName,
+  )}`;
+
+  return VILLAGE_ALIASES.get(aliasKey) ?? normalizedName;
 }
 
 function mapRegion(region, district) {
@@ -70,6 +133,31 @@ function mapStatus(functioning) {
 function parseCoordinate(value) {
   const coordinate = Number.parseFloat(normalize(value));
   return Number.isFinite(coordinate) ? coordinate : null;
+}
+
+function parseWaterLevel(sourceType, data) {
+  const normalizedType = normalizeNameKey(sourceType);
+  let value;
+
+  switch (normalizedType) {
+    case "borehole":
+      value = data.bh_static_water_level;
+      break;
+    case "dug well":
+      value = data.dw_static_water_level;
+      break;
+    case "dam":
+      value = data.dam_depth;
+      break;
+    case "berkad":
+      value = data.berkad_depth;
+      break;
+    default:
+      value = data.other_depth;
+  }
+
+  const waterLevel = Number.parseFloat(normalize(value));
+  return Number.isFinite(waterLevel) ? waterLevel : null;
 }
 
 async function* parseCsv(filePath) {
@@ -266,8 +354,10 @@ async function processFile(filePath, currentTotal) {
     }
 
     const regionName = mapRegion(rawRegion, districtName);
-    const villageName = normalize(
-      data.nearest_settlement_name || data.source_name,
+    const settlementName = normalize(data.nearest_settlement_name);
+    const villageName = canonicalizeVillage(
+      settlementName,
+      districtName,
     );
     const sourceName = normalize(data.source_name) || "Unknown Source";
 
@@ -278,6 +368,8 @@ async function processFile(filePath, currentTotal) {
 
     const latitude = parseCoordinate(data.latitude);
     const longitude = parseCoordinate(data.longitude);
+    const sourceType = normalize(data.water_source_type) || "Borehole";
+    const waterLevel = parseWaterLevel(sourceType, data);
 
     try {
       const region = await getOrCreateRegion(regionName);
@@ -297,8 +389,9 @@ async function processFile(filePath, currentTotal) {
       await db.insert(waterSources).values({
         villageId: village.id,
         name: sourceName,
-        type: normalize(data.water_source_type) || "Borehole",
+        type: sourceType,
         status: mapStatus(data.functioning),
+        waterLevel,
         latitude,
         longitude,
       });
