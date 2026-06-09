@@ -1,12 +1,4 @@
-import {
-  and,
-  count,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  or,
-} from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   districts,
@@ -17,7 +9,11 @@ import {
 } from "../db/schema.js";
 import { clearGovernmentWaterSourcesCache } from "../utils/governmentWaterSourcesCache.js";
 
-function parsePositiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
+function parsePositiveInteger(
+  value,
+  fallback,
+  maximum = Number.MAX_SAFE_INTEGER,
+) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1) {
     return fallback;
@@ -46,15 +42,19 @@ function isForeignKeyViolation(error) {
 export const getAll = async (req, res) => {
   try {
     const page = parsePositiveInteger(req.query.page, 1);
-    const limit = parsePositiveInteger(req.query.limit, 20, 100);
+    const limit = parsePositiveInteger(req.query.limit, 20, 500);
     const offset = (page - 1) * limit;
-    
+
     // Safely extract and trim query params
     const search = req.query.search ? String(req.query.search).trim() : "";
     const region = req.query.region ? String(req.query.region).trim() : "";
-    const district = req.query.district ? String(req.query.district).trim() : "";
-    const status = req.query.status ? String(req.query.status).trim().toLowerCase() : "";
-    
+    const district = req.query.district
+      ? String(req.query.district).trim()
+      : "";
+    const status = req.query.status
+      ? String(req.query.status).trim().toLowerCase()
+      : "";
+
     const conditions = [];
 
     if (req.query.regionId !== undefined && !regionId) {
@@ -189,7 +189,9 @@ export const create = async (req, res) => {
     );
 
     if (!parsedVillageId || !String(name ?? "").trim()) {
-      return res.status(400).json({ message: "villageId and name are required" });
+      return res
+        .status(400)
+        .json({ message: "villageId and name are required" });
     }
     if (
       Number.isNaN(parsedLatitude) ||
@@ -226,10 +228,7 @@ export const create = async (req, res) => {
       values.waterLevel = parsedWaterLevel;
     }
 
-    const [source] = await db
-      .insert(waterSources)
-      .values(values)
-      .returning();
+    const [source] = await db.insert(waterSources).values(values).returning();
 
     clearGovernmentWaterSourcesCache();
     return res.status(201).json(source);
@@ -260,7 +259,9 @@ export const updateStatus = async (req, res) => {
         .json({ message: "status or waterLevel is required" });
     }
     if (Number.isNaN(parsedWaterLevel)) {
-      return res.status(400).json({ message: "waterLevel must be a valid number" });
+      return res
+        .status(400)
+        .json({ message: "waterLevel must be a valid number" });
     }
 
     const changes = { lastMaintained: new Date() };
