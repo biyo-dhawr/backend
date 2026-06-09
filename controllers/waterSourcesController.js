@@ -49,11 +49,37 @@ export const getAll = async (req, res) => {
     const limit = parsePositiveInteger(req.query.limit, 20, 100);
     const offset = (page - 1) * limit;
     const search = String(req.query.search ?? "").trim();
-    const region = String(req.query.region ?? "").trim();
-    const district = String(req.query.district ?? "").trim();
+    const regionId =
+      req.query.regionId === undefined ? null : parseId(req.query.regionId);
+    const districtId =
+      req.query.districtId === undefined
+        ? null
+        : parseId(req.query.districtId);
+    const villageId =
+      req.query.villageId === undefined
+        ? null
+        : parseId(req.query.villageId);
     const status = String(req.query.status ?? "").trim();
     const conditions = [];
 
+    if (req.query.regionId !== undefined && !regionId) {
+      return res.status(400).json({ message: "Invalid regionId" });
+    }
+    if (req.query.districtId !== undefined && !districtId) {
+      return res.status(400).json({ message: "Invalid districtId" });
+    }
+    if (req.query.villageId !== undefined && !villageId) {
+      return res.status(400).json({ message: "Invalid villageId" });
+    }
+    if (regionId) {
+      conditions.push(eq(regions.id, regionId));
+    }
+    if (districtId) {
+      conditions.push(eq(districts.id, districtId));
+    }
+    if (villageId) {
+      conditions.push(eq(waterSources.villageId, villageId));
+    }
     if (search) {
       const pattern = `%${search}%`;
       conditions.push(
@@ -67,13 +93,6 @@ export const getAll = async (req, res) => {
     if (status) {
       conditions.push(eq(waterSources.status, status));
     }
-    if (district) {
-      conditions.push(eq(districts.name, district));
-    }
-    if (region) {
-      conditions.push(eq(regions.name, region));
-    }
-
     const where = conditions.length ? and(...conditions) : undefined;
     const baseQuery = () =>
       db
