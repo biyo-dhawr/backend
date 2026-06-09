@@ -26,7 +26,7 @@ Protected endpoints require the JWT returned by login:
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
-The JWT expires after 24 hours.
+The JWT expires after 7 days.
 
 ## Roles
 
@@ -244,9 +244,15 @@ Examples:
 ```text
 /api/water-sources?page=1&limit=20
 /api/water-sources?search=borehole
-/api/water-sources?region=Awdal&district=Borama
+/api/water-sources?regionId=1
+/api/water-sources?regionId=1&districtId=2
+/api/water-sources?villageId=59
 /api/water-sources?status=Working&page=1&limit=50
 ```
+
+The public `regionId`, `districtId`, and `villageId` filters can be combined.
+The `villageId` filter can populate the water-source choices when a community
+member submits a report.
 
 Success:
 

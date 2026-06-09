@@ -57,6 +57,24 @@ export const getAll = async (req, res) => {
     
     const conditions = [];
 
+    if (req.query.regionId !== undefined && !regionId) {
+      return res.status(400).json({ message: "Invalid regionId" });
+    }
+    if (req.query.districtId !== undefined && !districtId) {
+      return res.status(400).json({ message: "Invalid districtId" });
+    }
+    if (req.query.villageId !== undefined && !villageId) {
+      return res.status(400).json({ message: "Invalid villageId" });
+    }
+    if (regionId) {
+      conditions.push(eq(regions.id, regionId));
+    }
+    if (districtId) {
+      conditions.push(eq(districts.id, districtId));
+    }
+    if (villageId) {
+      conditions.push(eq(waterSources.villageId, villageId));
+    }
     if (search) {
       const pattern = `%${search}%`;
       conditions.push(
