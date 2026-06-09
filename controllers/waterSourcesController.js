@@ -51,6 +51,22 @@ export const getAll = async (req, res) => {
     const district = req.query.district
       ? String(req.query.district).trim()
       : "";
+    const village = req.query.village
+      ? String(req.query.village).trim()
+      : "";
+    const regionId =
+      req.query.regionId === undefined ? null : parseId(req.query.regionId);
+    const districtId =
+      req.query.districtId === undefined
+        ? null
+        : parseId(req.query.districtId);
+    const villageId =
+      req.query.villageId === undefined
+        ? null
+        : parseId(req.query.villageId);
+    const effectiveRegionId = regionId ?? parseId(region);
+    const effectiveDistrictId = districtId ?? parseId(district);
+    const effectiveVillageId = villageId ?? parseId(village);
     const status = req.query.status
       ? String(req.query.status).trim().toLowerCase()
       : "";
@@ -66,14 +82,14 @@ export const getAll = async (req, res) => {
     if (req.query.villageId !== undefined && !villageId) {
       return res.status(400).json({ message: "Invalid villageId" });
     }
-    if (regionId) {
-      conditions.push(eq(regions.id, regionId));
+    if (effectiveRegionId) {
+      conditions.push(eq(regions.id, effectiveRegionId));
     }
-    if (districtId) {
-      conditions.push(eq(districts.id, districtId));
+    if (effectiveDistrictId) {
+      conditions.push(eq(districts.id, effectiveDistrictId));
     }
-    if (villageId) {
-      conditions.push(eq(waterSources.villageId, villageId));
+    if (effectiveVillageId) {
+      conditions.push(eq(waterSources.villageId, effectiveVillageId));
     }
     if (search) {
       const pattern = `%${search}%`;
@@ -88,11 +104,14 @@ export const getAll = async (req, res) => {
     if (status) {
       conditions.push(ilike(waterSources.status, status));
     }
-    if (district) {
+    if (district && !effectiveDistrictId) {
       conditions.push(ilike(districts.name, `%${district}%`));
     }
-    if (region) {
+    if (region && !effectiveRegionId) {
       conditions.push(ilike(regions.name, `%${region}%`));
+    }
+    if (village && !effectiveVillageId) {
+      conditions.push(ilike(villages.name, `%${village}%`));
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;

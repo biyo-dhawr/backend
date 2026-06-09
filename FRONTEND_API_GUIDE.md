@@ -247,12 +247,17 @@ Examples:
 /api/water-sources?regionId=1
 /api/water-sources?regionId=1&districtId=2
 /api/water-sources?villageId=59
+/api/water-sources?region=Awdal&district=Borama&village=Boorama
 /api/water-sources?status=Working&page=1&limit=50
 ```
 
 The public `regionId`, `districtId`, and `villageId` filters can be combined.
 The `villageId` filter can populate the water-source choices when a community
 member submits a report.
+For compatibility, `region`, `district`, and `village` names are also accepted.
+Numeric values passed through those legacy parameters are treated as IDs.
+When both an ID and name are supplied for the same location level, the ID takes
+precedence.
 
 Success:
 
