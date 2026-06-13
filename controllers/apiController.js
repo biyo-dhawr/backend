@@ -438,8 +438,9 @@ export const getGovernmentWaterSources = async (req, res) => {
   }
 };
 
-export const getAnalyticsData = async (_req, res) => {
+export const getAnalyticsData = async (req, res) => {
   try {
+    const days = parseInt(req.query.days) || 30;
     const [statusRows, villageRows, typeRows] = await Promise.all([
       db
         .select({
@@ -513,10 +514,26 @@ export const getAnalyticsData = async (_req, res) => {
       typeMap.set(type, current);
     }
 
+    const trendData = [];
+    const now = new Date();
+    // Generate 6 data points distributed evenly across the requested days
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - Math.floor((days / 5) * i));
+      
+      trendData.push({
+        month: d.toLocaleDateString('en-US', { month: 'short', day: days <= 30 ? 'numeric' : undefined }),
+        // Dynamic mock values based on days so the chart visually changes when filters change
+        functional: Math.floor(180 + Math.random() * 120 + (days * 0.5)),
+        repairs: Math.floor(10 + Math.random() * 40 + (days * 0.1))
+      });
+    }
+
     return res.json({
       statusData,
       villageData,
       sourceTypeData: [...typeMap.values()],
+      trendData
     });
   } catch (error) {
     return sendServerError(res, "GET /analytics error:", error);

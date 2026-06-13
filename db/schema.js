@@ -118,6 +118,8 @@ export const reports = pgTable("reports", {
   }),
   reporterType: text("reporter_type"),
   content: text("content"),
+  severityLevel: text("severity_level").default("medium"),
+  actionTaken: text("action_taken"),
   isVerified: boolean("is_verified").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

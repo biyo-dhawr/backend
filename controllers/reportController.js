@@ -54,11 +54,14 @@ export const create = async (req, res) => {
       content,
       reporterType,
       reporter_type: legacyReporterType,
+      severityLevel,
+      severity_level: legacySeverityLevel,
     } = req.body ?? {};
     const parsedVillageId = parseId(villageId ?? legacyVillageId);
     const parsedWaterSourceId = parseId(
       waterSourceId ?? legacyWaterSourceId,
     );
+    const finalSeverity = severityLevel ?? legacySeverityLevel ?? "medium";
     const trimmedContent =
       typeof content === "string" ? content.trim() : "";
 
@@ -94,6 +97,7 @@ export const create = async (req, res) => {
         villageId: parsedVillageId,
         waterSourceId: parsedWaterSourceId,
         content: trimmedContent,
+        severityLevel: finalSeverity,
         reporterType: String(
           reporterType ?? legacyReporterType ?? "App",
         ).trim(),
@@ -110,13 +114,16 @@ export const create = async (req, res) => {
 export const verifyReport = async (req, res) => {
   try {
     const id = parseId(req.params.id);
+    const { actionTaken, action_taken } = req.body ?? {};
+    const finalAction = actionTaken ?? action_taken ?? null;
+
     if (!id) {
       return res.status(400).json({ message: "Invalid report id" });
     }
 
     const [report] = await db
       .update(reports)
-      .set({ isVerified: true })
+      .set({ isVerified: true, actionTaken: finalAction })
       .where(eq(reports.id, id))
       .returning();
 
