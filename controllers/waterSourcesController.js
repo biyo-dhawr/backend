@@ -6,6 +6,7 @@ import {
   sensorReadings,
   villages,
   waterSources,
+  alerts,
 } from "../db/schema.js";
 import { clearGovernmentWaterSourcesCache } from "../utils/governmentWaterSourcesCache.js";
 
@@ -283,6 +284,12 @@ export const updateStatus = async (req, res) => {
         .json({ message: "waterLevel must be a valid number" });
     }
 
+    const [existingSource] = await db
+      .select()
+      .from(waterSources)
+      .where(eq(waterSources.id, id))
+      .limit(1);
+
     const changes = { lastMaintained: new Date() };
     if (status !== undefined) {
       changes.status = String(status).trim();
@@ -301,10 +308,136 @@ export const updateStatus = async (req, res) => {
       return res.status(404).json({ message: "Water source not found" });
     }
 
+    // Trigger alert if transitioning from Working to Broken
+    if (existingSource && status) {
+      const oldStatus = existingSource.status?.toLowerCase();
+      const newStatus = status.toLowerCase();
+      if (
+        (oldStatus === "working" || oldStatus === "operational") &&
+        (newStatus === "broken" || newStatus === "critical")
+      ) {
+        await db.insert(alerts).values({
+          villageId: source.villageId,
+          message: `Alert: Water source "${source.name}" status changed to ${source.status}.`,
+          severity: "High",
+          isActive: true,
+        });
+      }
+    }
+
     clearGovernmentWaterSourcesCache();
     return res.json(source);
   } catch (error) {
     console.error("PATCH /water-sources/:id/status error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const updateSource = async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid water source id" });
+    }
+
+    const {
+      villageId,
+      village_id: legacyVillageId,
+      name,
+      type,
+      latitude,
+      longitude,
+      status,
+      waterLevel,
+      water_level: legacyWaterLevel,
+    } = req.body ?? {};
+
+    const parsedVillageId = parseId(villageId ?? legacyVillageId);
+    const parsedLatitude = parseOptionalNumber(latitude);
+    const parsedLongitude = parseOptionalNumber(longitude);
+    const parsedWaterLevel = parseOptionalNumber(
+      waterLevel ?? legacyWaterLevel,
+    );
+
+    if (!parsedVillageId || !String(name ?? "").trim()) {
+      return res
+        .status(400)
+        .json({ message: "villageId and name are required" });
+    }
+
+    if (
+      Number.isNaN(parsedLatitude) ||
+      Number.isNaN(parsedLongitude) ||
+      Number.isNaN(parsedWaterLevel)
+    ) {
+      return res.status(400).json({
+        message: "latitude, longitude, and waterLevel must be valid numbers",
+      });
+    }
+
+    const [village] = await db
+      .select({ id: villages.id })
+      .from(villages)
+      .where(eq(villages.id, parsedVillageId))
+      .limit(1);
+
+    if (!village) {
+      return res.status(404).json({ message: "Village not found" });
+    }
+
+    const [existingSource] = await db
+      .select()
+      .from(waterSources)
+      .where(eq(waterSources.id, id))
+      .limit(1);
+
+    const changes = {
+      villageId: parsedVillageId,
+      name: String(name).trim(),
+      type: String(type ?? "Borehole").trim() || "Borehole",
+      latitude: parsedLatitude,
+      longitude: parsedLongitude,
+      lastMaintained: new Date()
+    };
+
+    if (status !== undefined) {
+      changes.status = String(status).trim();
+    }
+    if (parsedWaterLevel !== null) {
+      changes.waterLevel = parsedWaterLevel;
+    }
+
+    const [source] = await db
+      .update(waterSources)
+      .set(changes)
+      .where(eq(waterSources.id, id))
+      .returning();
+
+    if (!source) {
+      return res.status(404).json({ message: "Water source not found" });
+    }
+
+    // Trigger alert if transitioning from Working to Broken
+    if (existingSource && status) {
+      const oldStatus = existingSource.status?.toLowerCase();
+      const newStatus = status.toLowerCase();
+      if (
+        (oldStatus === "working" || oldStatus === "operational") &&
+        (newStatus === "broken" || newStatus === "critical")
+      ) {
+        await db.insert(alerts).values({
+          villageId: source.villageId,
+          message: `Alert: Water source "${source.name}" status changed to ${source.status}.`,
+          severity: "High",
+          isActive: true,
+        });
+      }
+    }
+
+    clearGovernmentWaterSourcesCache();
+    return res.json(source);
+  } catch (error) {
+    console.error("PUT /water-sources/:id error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -340,9 +473,73 @@ export const deleteSource = async (req, res) => {
   }
 };
 
+export const bulkUpdateStatus = async (req, res) => {
+  try {
+    const { ids, status } = req.body ?? {};
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "An array of ids is required" });
+    }
+    if (!status || typeof status !== "string") {
+      return res.status(400).json({ message: "A valid status string is required" });
+    }
+
+    const validIds = ids.map(id => parseId(id)).filter(id => id !== null);
+
+    if (validIds.length === 0) {
+      return res.status(400).json({ message: "No valid ids provided" });
+    }
+
+    const existingSources = await db
+      .select()
+      .from(waterSources)
+      .where(inArray(waterSources.id, validIds));
+    const oldStatusMap = new Map(existingSources.map(s => [s.id, s.status?.toLowerCase()]));
+
+    const changes = { 
+      status: status.trim(),
+      lastMaintained: new Date()
+    };
+
+    const updatedSources = await db
+      .update(waterSources)
+      .set(changes)
+      .where(inArray(waterSources.id, validIds))
+      .returning();
+
+    // Insert alerts for transitioned sources
+    const newStatus = status.trim().toLowerCase();
+    if (newStatus === "broken" || newStatus === "critical") {
+      const newAlerts = [];
+      for (const updatedSource of updatedSources) {
+         const oldStatus = oldStatusMap.get(updatedSource.id);
+         if (oldStatus === "working" || oldStatus === "operational") {
+           newAlerts.push({
+             villageId: updatedSource.villageId,
+             message: `Alert: Water source "${updatedSource.name}" status changed to ${updatedSource.status}.`,
+             severity: "High",
+             isActive: true
+           });
+         }
+      }
+      if (newAlerts.length > 0) {
+        await db.insert(alerts).values(newAlerts);
+      }
+    }
+
+    clearGovernmentWaterSourcesCache();
+    return res.json({ message: "Status updated successfully", count: updatedSources.length });
+  } catch (error) {
+    console.error("PATCH /water-sources/bulk-status error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 export default {
   getAll,
   create,
   updateStatus,
+  updateSource,
   deleteSource,
+  bulkUpdateStatus,
 };

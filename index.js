@@ -20,6 +20,7 @@ app.use(cors(
 ));
 app.use(morgan("dev"));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Add support for URL-encoded payloads (common for USSD gateways)
 app.use("/api/auth", authRoutes);
 app.use("/api/water-sources", waterSourcesRoutes);
 app.use("/api/reports", reportRoutes);

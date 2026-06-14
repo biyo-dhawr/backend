@@ -4,6 +4,8 @@ import {
   deleteSource,
   getAll,
   updateStatus,
+  updateSource,
+  bulkUpdateStatus,
 } from "../controllers/waterSourcesController.js";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
@@ -17,10 +19,23 @@ router.post(
   create,
 );
 router.patch(
+  "/bulk-status",
+  authenticate,
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
+  bulkUpdateStatus,
+);
+
+router.patch(
   "/:id/status",
   authenticate,
   authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   updateStatus,
+);
+router.put(
+  "/:id",
+  authenticate,
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
+  updateSource,
 );
 router.delete(
   "/:id",
