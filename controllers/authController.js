@@ -59,8 +59,8 @@ export const register = async (req, res) => {
       user: publicUser(user),
     });
   } catch (error) {
-    console.error("Register Error:", error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("Register Error:", error.message);
+    return res.status(500).json({ message: "Server error", detail: error.message });
   }
 };
 

@@ -117,8 +117,10 @@ export const reports = pgTable("reports", {
     onDelete: "set null",
   }),
   reporterType: text("reporter_type"),
+  phoneNumber: text("phone_number"),
   content: text("content"),
   severityLevel: text("severity_level").default("medium"),
+  status: text("status").default("pending").notNull(),
   actionTaken: text("action_taken"),
   isVerified: boolean("is_verified").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
