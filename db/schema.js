@@ -9,6 +9,7 @@ import {
   uuid,
   pgEnum,
   bigserial,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // 1. Define the Enum (Matches your "user_role" enum in Postgres)
@@ -169,6 +170,7 @@ export const aiPredictions = pgTable("ai_predictions", {
   droughtRisk: doublePrecision("drought_risk").notNull(),
   predictedLevel: text("predicted_level").notNull(),
   confidenceScore: doublePrecision("confidence_score"),
+  reasons: jsonb("reasons").default([]).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

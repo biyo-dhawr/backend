@@ -62,6 +62,8 @@ In this guide, **staff** means `GOVERNMENT WORKER` or `VILLAGE LEADER`.
 | `GET`    | `/api/dashboard/stats`          | Staff         |
 | `GET`    | `/api/government/water-sources` | Staff         |
 | `GET`    | `/api/analytics`                | Staff         |
+| `POST`   | `/api/predictions/drought`      | Staff         |
+| `GET`    | `/api/predictions/drought`      | Staff         |
 | `POST`   | `/api/sms`                      | Staff         |
 | `POST`   | `/api/simulation/risk`          | Staff         |
 
@@ -635,6 +637,210 @@ Response:
 `villageData` is limited to the ten villages with the most sources.
 `trendData` is currently placeholder data.
 
+## Drought Predictions
+
+These endpoints run the drought-risk service and store prediction results.
+
+Important runtime requirement:
+
+- The Node API must be running.
+- The Python drought-risk service must also be running on `RISK_SERVICE_URL`,
+  usually `http://localhost:8000`.
+- Frontend clients should call the Node endpoints only. Do not call the Python
+  service directly from the browser.
+
+Start services locally:
+
+```sh
+npm run dev
+npm run risk:dev
+```
+
+### Run Drought Prediction
+
+Staff only:
+
+```http
+POST /api/predictions/drought
+```
+
+No body is required. This runs predictions for all villages.
+
+Run prediction for one village:
+
+```http
+POST /api/predictions/drought?villageId=59
+```
+
+Or send the village ID in the body:
+
+```json
+{
+  "villageId": 59
+}
+```
+
+What the backend does:
+
+- Aggregates compact village features from water sources and reports.
+- Sends those features to the Python drought-risk service.
+- Saves results in `ai_predictions`.
+- Updates `villages.droughtRiskLevel`.
+- Creates an AI alert for `High` or `Severe` predictions when no active AI
+  alert already exists for that village.
+
+The endpoint keeps one prediction row per village per day. If it is called
+again on the same day for the same village, the existing row is updated instead
+of creating a duplicate row.
+
+Success:
+
+```json
+{
+  "success": true,
+  "count": 1,
+  "inserted": 1,
+  "updated": 0,
+  "alertsCreated": 1,
+  "predictions": [
+    {
+      "id": 25,
+      "villageId": 59,
+      "predictionDate": "2026-06-30T10:15:00.000Z",
+      "droughtRisk": 0.7432,
+      "predictedLevel": "High",
+      "confidenceScore": 0.85,
+      "reasons": [
+        "Average water level is below the drought watch threshold.",
+        "Recent high-severity community reports indicate worsening access."
+      ],
+      "createdAt": "2026-06-30T10:15:00.000Z"
+    }
+  ]
+}
+```
+
+On a repeated call for the same village on the same day:
+
+```json
+{
+  "success": true,
+  "count": 1,
+  "inserted": 0,
+  "updated": 1,
+  "alertsCreated": 0,
+  "predictions": [
+    {
+      "id": 25,
+      "villageId": 59,
+      "predictionDate": "2026-06-30T10:20:00.000Z",
+      "droughtRisk": 0.741,
+      "predictedLevel": "High",
+      "confidenceScore": 0.85,
+      "reasons": [
+        "Average water level is below the drought watch threshold."
+      ],
+      "createdAt": "2026-06-30T10:15:00.000Z"
+    }
+  ]
+}
+```
+
+`predictions` contains the returned saved prediction rows. `inserted` and
+`updated` help the UI show whether the run created new prediction rows or
+refreshed today's existing rows.
+
+### List Saved Drought Predictions
+
+Staff only:
+
+```http
+GET /api/predictions/drought
+```
+
+Optional query parameters:
+
+| Parameter   | Default | Description                                      |
+| ----------- | ------- | ------------------------------------------------ |
+| `villageId` | Empty   | Return predictions for one village               |
+| `limit`     | `50`    | Maximum rows to return, capped at 200             |
+| `range`     | Empty   | Preset date range: `today`, `week`, or `month`   |
+| `period`    | Empty   | Alias for `range`                                 |
+| `from`      | Empty   | Start date, inclusive. Use `YYYY-MM-DD` or ISO    |
+| `to`        | Empty   | End date. `YYYY-MM-DD` includes that whole day    |
+
+Examples:
+
+```text
+/api/predictions/drought
+/api/predictions/drought?villageId=59
+/api/predictions/drought?villageId=59&limit=10
+/api/predictions/drought?range=today
+/api/predictions/drought?range=week
+/api/predictions/drought?range=month
+/api/predictions/drought?villageId=59&range=today
+/api/predictions/drought?from=2026-06-01&to=2026-06-30
+```
+
+Supported range aliases:
+
+| Value                         | Meaning      |
+| ----------------------------- | ------------ |
+| `today`, `day`                | Current day  |
+| `week`, `last-week`           | Last 7 days  |
+| `month`, `last-month`         | Last 30 days |
+| `last7days`, `last-7-days`    | Last 7 days  |
+| `last30days`, `last-30-days`  | Last 30 days |
+
+Explicit date filters can also use these aliases:
+
+```text
+dateFrom, startDate
+dateTo, endDate
+```
+
+If `range` and explicit dates are both supplied, explicit dates override the
+matching side of the preset. For example, `range=month&to=2026-06-15` means
+the last-month start date through the end of `2026-06-15`.
+
+Response:
+
+```json
+[
+  {
+    "id": 25,
+    "villageId": 59,
+    "predictionDate": "2026-06-30T10:15:00.000Z",
+    "droughtRisk": 0.7432,
+    "predictedLevel": "High",
+    "confidenceScore": 0.85,
+    "reasons": [
+      "Average water level is below the drought watch threshold.",
+      "Recent high-severity community reports indicate worsening access."
+    ],
+    "createdAt": "2026-06-30T10:15:00.000Z",
+    "village": {
+      "id": 59,
+      "name": "Example Village",
+      "districtId": 1,
+      "latitude": 9.94,
+      "longitude": 43.19,
+      "droughtRiskLevel": "High"
+    }
+  }
+]
+```
+
+Suggested frontend behavior:
+
+- Show `predictedLevel` as the label: `Low`, `Medium`, `High`, or `Severe`.
+- Treat `droughtRisk` as a `0` to `1` score and convert to a percentage for UI
+  displays if needed.
+- Display `reasons` as explanation bullets under each prediction.
+- After running a prediction, refetch villages and alerts if those views are
+  currently open, because village risk levels and active alerts may have
+  changed.
+
 ## Utility and Simulation
 
 ### Send Mock SMS
@@ -716,6 +922,12 @@ const report = await apiRequest("/reports/submit/secure", {
     reporterType: "Web",
   }),
 });
+
+const predictionRun = await apiRequest("/predictions/drought?villageId=59", {
+  method: "POST",
+});
+
+const predictions = await apiRequest("/predictions/drought?villageId=59");
 ```
 
 ## HTTP Status Codes

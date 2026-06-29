@@ -5,6 +5,8 @@
 .yarn/*
 
 .vscode/
+.idea/
+drought-risk-service/.idea/
 
 # Ignore build outputs
 /dist/
@@ -27,3 +29,24 @@ yarn-error.log*
 
 # env files
 .env*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+ENV/
+drought-risk-service/.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+build/
+site/
