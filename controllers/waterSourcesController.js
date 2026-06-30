@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   districts,
@@ -8,6 +8,7 @@ import {
   waterSources,
   alerts,
 } from "../db/schema.js";
+import { assessWaterSourceFailure } from "../services/droughtRiskClient.js";
 import { clearGovernmentWaterSourcesCache } from "../utils/governmentWaterSourcesCache.js";
 
 function parsePositiveInteger(
@@ -38,6 +39,128 @@ function parseOptionalNumber(value) {
 
 function isForeignKeyViolation(error) {
   return error?.cause?.code === "23503" || error?.code === "23503";
+}
+
+function toNumber(value, fallback = 0) {
+  if (value === null || value === undefined) return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function toNullableNumber(value) {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeWaterSourceFeatureRow(row) {
+  return {
+    waterSourceId: toNumber(row.water_source_id),
+    name: row.name,
+    type: row.type,
+    status: row.status,
+    waterLevel: toNullableNumber(row.water_level),
+    villageId: toNumber(row.village_id),
+    villageName: row.village_name,
+    villageDroughtRiskLevel: row.village_drought_risk_level,
+    daysSinceMaintenance:
+      row.days_since_maintenance === null
+        ? null
+        : toNumber(row.days_since_maintenance),
+    recentReportCount7Days: toNumber(row.recent_report_count_7_days),
+    recentReportCount30Days: toNumber(row.recent_report_count_30_days),
+    highSeverityReportCount30Days: toNumber(
+      row.high_severity_report_count_30_days,
+    ),
+    verifiedReportCount30Days: toNumber(row.verified_report_count_30_days),
+    totalCount: toNumber(row.total_count),
+  };
+}
+
+async function getWaterSourceFailureFeatures({
+  sourceId = null,
+  villageId = null,
+  status = "",
+  limit = 50,
+  offset = 0,
+} = {}) {
+  const rows = await db.execute(sql`
+    WITH report_summary AS (
+      SELECT
+        water_source_id,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS recent_report_count_7_days,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS recent_report_count_30_days,
+        COUNT(*) FILTER (
+          WHERE created_at >= NOW() - INTERVAL '30 days'
+          AND LOWER(COALESCE(severity_level, '')) IN ('high', 'critical', 'severe')
+        )::int AS high_severity_report_count_30_days,
+        COUNT(*) FILTER (
+          WHERE created_at >= NOW() - INTERVAL '30 days'
+          AND is_verified = true
+        )::int AS verified_report_count_30_days
+      FROM reports
+      WHERE water_source_id IS NOT NULL
+      GROUP BY water_source_id
+    )
+    SELECT
+      ws.id AS water_source_id,
+      ws.name,
+      ws.type,
+      ws.status,
+      ws.water_level,
+      ws.village_id,
+      v.name AS village_name,
+      v.drought_risk_level AS village_drought_risk_level,
+      CASE
+        WHEN ws.last_maintained IS NULL THEN NULL
+        ELSE FLOOR(EXTRACT(EPOCH FROM (NOW() - ws.last_maintained)) / 86400)::int
+      END AS days_since_maintenance,
+      COALESCE(rs.recent_report_count_7_days, 0)::int AS recent_report_count_7_days,
+      COALESCE(rs.recent_report_count_30_days, 0)::int AS recent_report_count_30_days,
+      COALESCE(rs.high_severity_report_count_30_days, 0)::int AS high_severity_report_count_30_days,
+      COALESCE(rs.verified_report_count_30_days, 0)::int AS verified_report_count_30_days,
+      COUNT(*) OVER()::int AS total_count
+    FROM water_sources ws
+    INNER JOIN villages v ON v.id = ws.village_id
+    LEFT JOIN report_summary rs ON rs.water_source_id = ws.id
+    WHERE ${sourceId ? sql`ws.id = ${sourceId}` : sql`true`}
+      AND ${villageId ? sql`ws.village_id = ${villageId}` : sql`true`}
+      AND ${status ? sql`LOWER(ws.status) = ${status.toLowerCase()}` : sql`true`}
+    ORDER BY ws.id DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `);
+
+  return rows.map(normalizeWaterSourceFeatureRow);
+}
+
+function mergeSourceMetadata(feature, intelligence) {
+  return {
+    ...intelligence,
+    waterSource: {
+      id: feature.waterSourceId,
+      name: feature.name,
+      type: feature.type,
+      status: feature.status,
+      waterLevel: feature.waterLevel,
+      villageId: feature.villageId,
+    },
+    village: {
+      id: feature.villageId,
+      name: feature.villageName,
+      droughtRiskLevel: feature.villageDroughtRiskLevel,
+    },
+    inputs: {
+      waterLevel: feature.waterLevel,
+      status: feature.status,
+      daysSinceMaintenance: feature.daysSinceMaintenance,
+      recentReportCount7Days: feature.recentReportCount7Days,
+      recentReportCount30Days: feature.recentReportCount30Days,
+      highSeverityReportCount30Days: feature.highSeverityReportCount30Days,
+      verifiedReportCount30Days: feature.verifiedReportCount30Days,
+      villageDroughtRiskLevel: feature.villageDroughtRiskLevel,
+    },
+  };
 }
 
 export const getAll = async (req, res) => {
@@ -535,6 +658,79 @@ export const bulkUpdateStatus = async (req, res) => {
   }
 };
 
+export const getFailureIntelligence = async (req, res) => {
+  try {
+    const page = parsePositiveInteger(req.query.page, 1);
+    const limit = parsePositiveInteger(req.query.limit, 50, 200);
+    const offset = (page - 1) * limit;
+    const villageId =
+      req.query.villageId === undefined ? null : parseId(req.query.villageId);
+    const status = req.query.status ? String(req.query.status).trim() : "";
+
+    if (req.query.villageId !== undefined && !villageId) {
+      return res.status(400).json({ message: "Invalid villageId" });
+    }
+
+    const features = await getWaterSourceFailureFeatures({
+      villageId,
+      status,
+      limit,
+      offset,
+    });
+    const total = features[0]?.totalCount ?? 0;
+    const intelligence = await assessWaterSourceFailure(features);
+    const featuresById = new Map(
+      features.map((feature) => [feature.waterSourceId, feature]),
+    );
+    const data = intelligence
+      .map((item) => mergeSourceMetadata(featuresById.get(item.waterSourceId), item))
+      .sort((a, b) => b.priorityScore - a.priorityScore);
+
+    return res.json({
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("GET /water-sources/intelligence error:", error);
+    return res.status(500).json({
+      message: "Water-source intelligence failed",
+      error: error.response?.data?.detail || error.message,
+    });
+  }
+};
+
+export const getFailureIntelligenceById = async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid water source id" });
+    }
+
+    const features = await getWaterSourceFailureFeatures({
+      sourceId: id,
+      limit: 1,
+    });
+
+    if (!features.length) {
+      return res.status(404).json({ message: "Water source not found" });
+    }
+
+    const [intelligence] = await assessWaterSourceFailure(features);
+    return res.json(mergeSourceMetadata(features[0], intelligence));
+  } catch (error) {
+    console.error("GET /water-sources/:id/intelligence error:", error);
+    return res.status(500).json({
+      message: "Water-source intelligence failed",
+      error: error.response?.data?.detail || error.message,
+    });
+  }
+};
+
 export default {
   getAll,
   create,
@@ -542,4 +738,6 @@ export default {
   updateSource,
   deleteSource,
   bulkUpdateStatus,
+  getFailureIntelligence,
+  getFailureIntelligenceById,
 };

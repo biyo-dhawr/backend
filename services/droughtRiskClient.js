@@ -23,3 +23,25 @@ export async function predictDroughtRisk(villages) {
 
   return response.data;
 }
+
+export async function assessWaterSourceFailure(waterSources) {
+  const baseUrl = (
+    process.env.RISK_SERVICE_URL || DEFAULT_RISK_SERVICE_URL
+  ).replace(/\/$/, "");
+  const headers = {};
+
+  if (process.env.RISK_SERVICE_TOKEN) {
+    headers["X-Internal-Token"] = process.env.RISK_SERVICE_TOKEN;
+  }
+
+  const response = await axios.post(
+    `${baseUrl}/assess/water-sources/batch`,
+    { waterSources },
+    {
+      headers,
+      timeout: Number(process.env.RISK_SERVICE_TIMEOUT_MS || 10000),
+    },
+  );
+
+  return response.data;
+}

@@ -6,12 +6,26 @@ import {
   updateStatus,
   updateSource,
   bulkUpdateStatus,
+  getFailureIntelligence,
+  getFailureIntelligenceById,
 } from "../controllers/waterSourcesController.js";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
 const router = Router();
 
 router.get("/", getAll);
+router.get(
+  "/intelligence",
+  authenticate,
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
+  getFailureIntelligence,
+);
+router.get(
+  "/:id/intelligence",
+  authenticate,
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
+  getFailureIntelligenceById,
+);
 router.post(
   "/",
   authenticate,

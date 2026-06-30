@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 from typing import Any
+import math
 
 
 RISK_LEVELS = ("Low", "Medium", "High", "Severe")
+FAILURE_WATER_LEVEL = 10.0
+DEPLETION_RATES_BY_TYPE = {
+    "borehole": 1.2,
+    "dam": 2.0,
+    "dug well": 1.8,
+    "shallow well": 2.5,
+    "berkad": 2.2,
+    "well": 1.8,
+}
 
 
 def clamp(value: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
@@ -28,6 +38,165 @@ def current_level_bias(level: str | None) -> float:
         "severe": 0.5,
     }
     return weights.get((level or "").lower(), 0.05)
+
+
+def normalize_status(status: str | None) -> str:
+    return (status or "").strip().lower()
+
+
+def source_depletion_rate(source_type: str | None) -> float:
+    source_type_key = (source_type or "").strip().lower()
+    return DEPLETION_RATES_BY_TYPE.get(source_type_key, 1.8)
+
+
+def source_operational_status(priority_score: float, status: str | None) -> str:
+    normalized = normalize_status(status)
+    if normalized in {"broken", "critical", "non-functional", "non functional"}:
+        return "Failed"
+    if priority_score >= 75:
+        return "Critical"
+    if priority_score >= 55:
+        return "At Risk"
+    if priority_score >= 30:
+        return "Watch"
+    return "Healthy"
+
+
+def source_risk_level(priority_score: float, status: str | None) -> str:
+    normalized = normalize_status(status)
+    if normalized in {"broken", "critical", "non-functional", "non functional"}:
+        return "Severe"
+    if priority_score >= 75:
+        return "Severe"
+    if priority_score >= 55:
+        return "High"
+    if priority_score >= 30:
+        return "Medium"
+    return "Low"
+
+
+def drought_multiplier(level: str | None) -> float:
+    return {
+        "low": 1.0,
+        "medium": 1.1,
+        "high": 1.25,
+        "severe": 1.4,
+    }.get((level or "").strip().lower(), 1.0)
+
+
+def calculate_water_source_intelligence(features: dict[str, Any]) -> dict[str, Any]:
+    source_id = int(features["waterSourceId"])
+    source_type = features.get("type")
+    status = features.get("status")
+    normalized_status = normalize_status(status)
+    water_level = features.get("waterLevel")
+    recent_reports_7_days = max(int(features.get("recentReportCount7Days") or 0), 0)
+    recent_reports_30_days = max(int(features.get("recentReportCount30Days") or 0), 0)
+    high_severity_reports = max(int(features.get("highSeverityReportCount30Days") or 0), 0)
+    verified_reports = max(int(features.get("verifiedReportCount30Days") or 0), 0)
+    days_since_maintenance = features.get("daysSinceMaintenance")
+    village_risk = features.get("villageDroughtRiskLevel")
+
+    reasons: list[str] = []
+    recommendations: list[str] = []
+    status_pressure = 0.0
+
+    if normalized_status in {"broken", "critical", "non-functional", "non functional"}:
+        status_pressure = 1.0
+        reasons.append("Water source is already marked as failed or critical.")
+        recommendations.append("Dispatch repair or verification team immediately.")
+    elif normalized_status in {"needed maintenance", "needs maintenance", "maintenance"}:
+        status_pressure = 0.45
+        reasons.append("Water source is marked as needing maintenance.")
+        recommendations.append("Schedule maintenance inspection within 7 days.")
+    elif normalized_status in {"working", "operational"}:
+        status_pressure = 0.05
+    elif normalized_status:
+        status_pressure = 0.2
+        reasons.append("Water source status is not clearly healthy.")
+
+    if water_level is None:
+        water_pressure = 0.35
+        estimated_failure_days = None
+        reasons.append("Water level is missing, so failure countdown is less certain.")
+        recommendations.append("Verify current water level manually.")
+    else:
+        level = clamp(float(water_level), 0.0, 100.0)
+        water_pressure = clamp((55.0 - level) / 55.0)
+
+        base_depletion_rate = source_depletion_rate(source_type)
+        report_multiplier = 1.0 + min(recent_reports_7_days, 5) * 0.06 + min(high_severity_reports, 4) * 0.1
+        status_multiplier = 1.35 if status_pressure >= 0.45 else 1.0
+        adjusted_depletion_rate = base_depletion_rate * report_multiplier * status_multiplier * drought_multiplier(village_risk)
+
+        if normalized_status in {"broken", "critical", "non-functional", "non functional"}:
+            estimated_failure_days = 0
+        elif level <= FAILURE_WATER_LEVEL:
+            estimated_failure_days = 0
+            reasons.append("Water level is already at or below the failure threshold.")
+            recommendations.append("Prepare emergency water support for affected users.")
+        else:
+            estimated_failure_days = int(math.ceil((level - FAILURE_WATER_LEVEL) / adjusted_depletion_rate))
+
+        if level < 20:
+            reasons.append("Water level is critically low.")
+            recommendations.append("Inspect within 24 hours and prepare backup access.")
+        elif level < 35:
+            reasons.append("Water level is below the watch threshold.")
+            recommendations.append("Monitor water level and community reports closely.")
+
+    report_pressure = clamp(
+        (recent_reports_30_days / 8.0) * 0.35
+        + (recent_reports_7_days / 4.0) * 0.25
+        + (high_severity_reports / 3.0) * 0.35
+        + (verified_reports / 4.0) * 0.2
+    )
+    if high_severity_reports:
+        reasons.append("Recent high-severity reports are linked to this water source.")
+        recommendations.append("Review recent reports before closing maintenance work.")
+    elif recent_reports_7_days >= 2:
+        reasons.append("Recent reports indicate possible service deterioration.")
+
+    maintenance_pressure = 0.0
+    if days_since_maintenance is None:
+        maintenance_pressure = 0.15
+    else:
+        days_since_maintenance = max(int(days_since_maintenance), 0)
+        maintenance_pressure = clamp(days_since_maintenance / 365.0)
+        if days_since_maintenance >= 180:
+            reasons.append("Water source has not been maintained recently.")
+            recommendations.append("Schedule preventive maintenance.")
+
+    village_pressure = current_level_bias(village_risk)
+    priority_score = clamp(
+        water_pressure * 0.35
+        + status_pressure * 0.25
+        + report_pressure * 0.2
+        + maintenance_pressure * 0.1
+        + village_pressure * 0.1
+    ) * 100.0
+
+    if not recommendations:
+        recommendations.append("Continue routine monitoring.")
+    if not reasons:
+        reasons.append("Current source indicators are stable.")
+
+    operational_status = source_operational_status(priority_score, status)
+
+    if estimated_failure_days is not None and estimated_failure_days <= 7 and operational_status != "Failed":
+        recommendations.insert(0, "Prioritize this source for field inspection this week.")
+
+    return {
+        "waterSourceId": source_id,
+        "operationalStatus": operational_status,
+        "riskLevel": source_risk_level(priority_score, status),
+        "estimatedFailureInDays": estimated_failure_days,
+        "priorityScore": round(priority_score, 2),
+        "failureThresholdWaterLevel": FAILURE_WATER_LEVEL,
+        "reasons": reasons,
+        "recommendations": recommendations,
+        "topReason": reasons[0],
+    }
 
 
 def score_village(features: dict[str, Any]) -> dict[str, Any]:

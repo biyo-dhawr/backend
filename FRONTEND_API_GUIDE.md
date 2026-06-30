@@ -51,6 +51,8 @@ In this guide, **staff** means `GOVERNMENT WORKER` or `VILLAGE LEADER`.
 | `GET`    | `/api/alerts`                   | Public        |
 | `POST`   | `/api/alerts`                   | Staff         |
 | `GET`    | `/api/water-sources`            | Public        |
+| `GET`    | `/api/water-sources/intelligence` | Staff       |
+| `GET`    | `/api/water-sources/:id/intelligence` | Staff  |
 | `POST`   | `/api/water-sources`            | Staff         |
 | `PATCH`  | `/api/water-sources/:id/status` | Staff         |
 | `DELETE` | `/api/water-sources/:id`        | Staff         |
@@ -306,6 +308,128 @@ Success:
 ```
 
 `sensorReadings` contains at most the newest reading.
+
+### Water Source Failure Intelligence
+
+Staff only:
+
+```http
+GET /api/water-sources/intelligence
+```
+
+This endpoint estimates how soon each water source may reach failure conditions
+and returns an operational recommendation. It is formula-based, not LLM-based.
+The Node API gathers water-source, report, and village-risk data, then asks the
+Python risk service to calculate the result.
+
+Runtime requirement:
+
+- The Node API must be running.
+- The Python drought-risk service must also be running on `RISK_SERVICE_URL`,
+  usually `http://localhost:8000`.
+
+Query parameters:
+
+| Parameter   | Default | Description                              |
+| ----------- | ------- | ---------------------------------------- |
+| `page`      | `1`     | Page number                              |
+| `limit`     | `50`    | Page size, maximum `200`                 |
+| `villageId` | Empty   | Return sources for one village           |
+| `status`    | Empty   | Exact source status, case-insensitive    |
+
+Examples:
+
+```text
+/api/water-sources/intelligence
+/api/water-sources/intelligence?page=1&limit=25
+/api/water-sources/intelligence?villageId=59
+/api/water-sources/intelligence?status=Working
+```
+
+Response:
+
+```json
+{
+  "data": [
+    {
+      "waterSourceId": 1000,
+      "operationalStatus": "At Risk",
+      "riskLevel": "High",
+      "estimatedFailureInDays": 12,
+      "priorityScore": 68.4,
+      "failureThresholdWaterLevel": 10,
+      "topReason": "Water level is below the watch threshold.",
+      "reasons": [
+        "Water level is below the watch threshold.",
+        "Recent high-severity reports are linked to this water source."
+      ],
+      "recommendations": [
+        "Monitor water level and community reports closely.",
+        "Review recent reports before closing maintenance work."
+      ],
+      "waterSource": {
+        "id": 1000,
+        "name": "Example Borehole",
+        "type": "Borehole",
+        "status": "Working",
+        "waterLevel": 28,
+        "villageId": 59
+      },
+      "village": {
+        "id": 59,
+        "name": "Example Village",
+        "droughtRiskLevel": "High"
+      },
+      "inputs": {
+        "waterLevel": 28,
+        "status": "Working",
+        "daysSinceMaintenance": 220,
+        "recentReportCount7Days": 3,
+        "recentReportCount30Days": 6,
+        "highSeverityReportCount30Days": 1,
+        "verifiedReportCount30Days": 2,
+        "villageDroughtRiskLevel": "High"
+      }
+    }
+  ],
+  "meta": {
+    "total": 1000,
+    "page": 1,
+    "limit": 50,
+    "totalPages": 20
+  }
+}
+```
+
+Field notes:
+
+- `estimatedFailureInDays` is an estimate, not a guarantee.
+- `null` means the source does not have enough water-level data for a countdown.
+- `failureThresholdWaterLevel` is currently `10`, meaning the countdown estimates
+  days until the source reaches 10% water level.
+- `priorityScore` is `0` to `100`; sort descending for an urgent-work list.
+- `operationalStatus` can be `Healthy`, `Watch`, `At Risk`, `Critical`, or
+  `Failed`.
+- `riskLevel` can be `Low`, `Medium`, `High`, or `Severe`.
+
+Suggested frontend behavior:
+
+- Use the bulk endpoint for dashboards, maps, and priority tables.
+- Sort by `priorityScore` descending for “sources needing attention”.
+- Show `estimatedFailureInDays` as “estimated days until critical failure”.
+- Use `topReason` in compact cards and `reasons`/`recommendations` in detail
+  panels.
+
+### Single Water Source Failure Intelligence
+
+Staff only:
+
+```http
+GET /api/water-sources/1000/intelligence
+```
+
+This returns the same fields as the bulk endpoint, but for one source. Use it on
+water-source detail pages or after a user updates a source status/water level.
 
 ### Create Water Source
 
