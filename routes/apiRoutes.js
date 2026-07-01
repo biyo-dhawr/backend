@@ -10,12 +10,18 @@ import {
   getVillages,
   sendSms,
   updateRisk,
+  getVillageLeaders
 } from "../controllers/apiController.js";
+import { updateVillageLeaders, saveVillageLeader, deleteVillageLeader } from "../controllers/authController.js";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
 const router = Router();
 const staffOnly = authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]);
 
+router.get("/users/village-leaders", authenticate, staffOnly, getVillageLeaders);
+router.put("/users/village-leaders/:id", authenticate, staffOnly, updateVillageLeaders);
+router.post("/users/village-leaders", authenticate, staffOnly, saveVillageLeader);
+router.delete("/users/village-leaders/:id", authenticate, staffOnly, deleteVillageLeader);
 router.get("/regions", getRegions);
 router.get("/districts", getDistricts);
 router.get("/villages", getVillages);

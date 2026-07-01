@@ -7,6 +7,7 @@ import {
   regions,
   villages,
   waterSources,
+  profiles,
 } from "../db/schema.js";
 import {
   clearGovernmentWaterSourcesCache,
@@ -540,6 +541,37 @@ export const getAnalyticsData = async (req, res) => {
   }
 };
 
+export const getVillageLeaders = async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: profiles.id,
+        fullName: profiles.fullName,
+        email: profiles.email,
+        role: profiles.role,
+        ngoId: profiles.ngoId,
+        districtId: profiles.districtId,
+        phoneNumber: profiles.phoneNumber,
+        createdAt: profiles.createdAt,
+        updatedAt: profiles.updatedAt,
+        district: {
+          id: districts.id,
+          name: districts.name,
+          regionId: districts.regionId,
+        },
+      })
+      .from(profiles)
+      .leftJoin(districts, eq(profiles.districtId, districts.id))
+      .where(eq(profiles.role, "VILLAGE LEADER"))
+      .orderBy(profiles.fullName);
+
+    return res.json(rows);
+  } catch (error) {
+    return sendServerError(res, "GET /users/village-leaders error:", error);
+  }
+};
+
+
 export default {
   getRegions,
   getDistricts,
@@ -551,4 +583,5 @@ export default {
   getDashboardStats,
   getGovernmentWaterSources,
   getAnalyticsData,
+  getVillageLeaders,
 };
