@@ -1,12 +1,15 @@
 import os
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from .env import load_env_files
+from .reporting import generate_source_report
 from .scoring import calculate_water_source_intelligence, score_village
 
 
+load_env_files()
 SERVICE_TOKEN = os.getenv("RISK_SERVICE_TOKEN")
 
 app = FastAPI(title="Drought Risk Service", version="1.0.0")
@@ -73,6 +76,32 @@ class WaterSourceIntelligenceResult(BaseModel):
     topReason: str
 
 
+class WaterSourceReportContext(BaseModel):
+    generatedAt: Optional[str] = None
+    waterSource: dict[str, Any]
+    village: dict[str, Any]
+    district: Optional[dict[str, Any]] = None
+    region: Optional[dict[str, Any]] = None
+    summaryMetrics: dict[str, Any] = Field(default_factory=dict)
+    recentReports: list[dict[str, Any]] = Field(default_factory=list)
+    activeAlerts: list[dict[str, Any]] = Field(default_factory=list)
+    latestSensorReadings: list[dict[str, Any]] = Field(default_factory=list)
+    interventions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class WaterSourceReportResult(BaseModel):
+    title: str
+    executiveSummary: str
+    riskLevel: str
+    currentCondition: str
+    mainConcerns: list[str]
+    supportingEvidence: list[str]
+    recommendedActions: list[str]
+    maintenancePriority: str
+    communityImpact: str
+    dataLimitations: list[str]
+
+
 def require_token(x_internal_token: Optional[str]) -> None:
     if SERVICE_TOKEN and x_internal_token != SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid service token")
@@ -105,3 +134,12 @@ def assess_water_sources_batch(
         calculate_water_source_intelligence(source.model_dump())
         for source in payload.waterSources
     ]
+
+
+@app.post("/analyze/water-source", response_model=WaterSourceReportResult)
+def analyze_water_source(
+    payload: WaterSourceReportContext,
+    x_internal_token: Annotated[Optional[str], Header()] = None,
+) -> dict:
+    require_token(x_internal_token)
+    return generate_source_report(payload.model_dump())

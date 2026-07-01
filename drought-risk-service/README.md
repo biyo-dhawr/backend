@@ -18,8 +18,18 @@ Optional internal auth:
 export RISK_SERVICE_TOKEN=your-shared-secret
 ```
 
+Groq-backed source reports:
+
+```sh
+export GROQ_API_KEY=your-groq-api-key
+export GROQ_MODEL=llama-3.1-8b-instant
+```
+
+The service also loads `.env` from the backend root automatically when it starts.
+
 The Node backend calls:
 
 ```text
 POST /predict/drought/batch
+POST /analyze/water-source
 ```

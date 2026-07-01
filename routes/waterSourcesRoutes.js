@@ -8,6 +8,7 @@ import {
   bulkUpdateStatus,
   getFailureIntelligence,
   getFailureIntelligenceById,
+  generateSourceReport,
 } from "../controllers/waterSourcesController.js";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
@@ -25,6 +26,12 @@ router.get(
   authenticate,
   authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
   getFailureIntelligenceById,
+);
+router.post(
+  "/:id/report",
+  authenticate,
+  authorize(["GOVERNMENT WORKER", "VILLAGE LEADER"]),
+  generateSourceReport,
 );
 router.post(
   "/",
