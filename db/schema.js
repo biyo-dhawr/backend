@@ -35,6 +35,10 @@ export const profiles = pgTable("profiles", {
   passwordHash: text("password_hash"),
   role: userRoleEnum("role").default("COMMUNITY MEMBER").notNull(),
   ngoId: integer("ngo_id").references(() => ngos.id, { onDelete: "set null" }),
+  districtId: integer("district_id").references(() => districts.id, {
+    onDelete: "set null",
+  }),
+  phoneNumber: text("phone_number"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

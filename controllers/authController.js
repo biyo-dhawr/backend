@@ -1,8 +1,13 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { createUser, findUserByEmail } from "../models/authModel.js";
+import { createUser, findUserByEmail, findUserById, deleteUser, updateUser } from "../models/authModel.js";
 
 const PUBLIC_REGISTRATION_ROLE = "COMMUNITY MEMBER";
+
+const sendServerError = (res, message, error) => {
+  console.error(message, error);
+  return res.status(500).json({ message: "Server error", detail: error.message });
+}
 
 function publicUser(user) {
   return {
@@ -102,7 +107,96 @@ export const login = async (req, res) => {
   }
 };
 
+export const updateVillageLeaders = async (req, res) => {
+  try{
+    const { fullName, email, password, districtId, phoneNumber } = req.body ?? {};
+    const leaderId = req.user?.id;
+    
+    if (!fullName || !email || !districtId) {
+      return res.status(400).json({ message: "fullName, email, and districtId are required" });
+    }
+    
+    const user = await findUserByEmail(email.trim().toLowerCase());
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    const updatedData = {
+      fullName: fullName.trim(),
+      districtId,
+      phoneNumber: phoneNumber?.trim() || null,
+    };
+    
+    if (password) {
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+      updatedData.passwordHash = await bcrypt.hash(password, 10);
+    }
+    
+    const updatedUser = await updateUser(user.id, updatedData);
+    
+    return res.json({
+      message: "Village leader updated successfully",
+      user: publicUser(updatedUser),
+    });
+  } catch (error) {
+    return sendServerError(res, "PUT /users/village-leaders error:", error);
+  }
+}
+
+export const saveVillageLeader = async (req, res) => {
+  try {
+    const { fullName, email, password, districtId, phoneNumber } = req.body ?? {};
+    if (!fullName || !email || !districtId || !password) {
+      return res.status(400).json({ message: "fullName, email, districtId, and password are required" });
+    }
+
+    const existingUser = await findUserByEmail(email.trim().toLowerCase());
+    if (existingUser) {
+      return res.status(409).json({ message: "User already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await createUser({
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      passwordHash: hashedPassword,
+      role: "VILLAGE LEADER",
+      districtId,
+      phoneNumber: phoneNumber?.trim() || null,
+    });
+
+    return res.status(201).json({
+      message: "Village leader created successfully",
+      user: publicUser(newUser),
+    });
+  } catch (error) {
+    return sendServerError(res, "POST /users/village-leaders error:", error);
+  }
+}
+
+export const deleteVillageLeader = async (req, res) => {
+  try {
+    const {id} = req.params;
+    if (!id) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+
+    const user = await findUserById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await deleteUser(id);
+    return res.json({ message: "Village leader deleted successfully" });
+  } catch (error) {
+    return sendServerError(res, "DELETE /users/village-leaders error:", error);
+  }
+}
+
 export default {
   register,
   login,
+  updateVillageLeaders
 };
