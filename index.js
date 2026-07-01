@@ -7,6 +7,7 @@ import authRoutes from "./routes/authRoutes.js";
 import waterSourcesRoutes from "./routes/waterSourcesRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import apiRoutes from "./routes/apiRoutes.js";
+import predictionRoutes from "./routes/predictionRoutes.js";
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use(express.urlencoded({ extended: true })); // Add support for URL-encoded 
 app.use("/api/auth", authRoutes);
 app.use("/api/water-sources", waterSourcesRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/predictions", predictionRoutes);
 app.use("/api", apiRoutes);
 
 app.get("/", (req, res) => {

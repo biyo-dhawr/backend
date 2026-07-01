@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js",
+    "risk:dev": "cd drought-risk-service && python3 -m uvicorn app.main:app --reload --port 8000",
     "import:swims": "node scripts/import_swims_data.js",
     "studio": "npx drizzle-kit studio"
   },
