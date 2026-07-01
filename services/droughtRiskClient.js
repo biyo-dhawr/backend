@@ -45,3 +45,25 @@ export async function assessWaterSourceFailure(waterSources) {
 
   return response.data;
 }
+
+export async function generateWaterSourceReport(context) {
+  const baseUrl = (
+    process.env.RISK_SERVICE_URL || DEFAULT_RISK_SERVICE_URL
+  ).replace(/\/$/, "");
+  const headers = {};
+
+  if (process.env.RISK_SERVICE_TOKEN) {
+    headers["X-Internal-Token"] = process.env.RISK_SERVICE_TOKEN;
+  }
+
+  const response = await axios.post(
+    `${baseUrl}/analyze/water-source`,
+    context,
+    {
+      headers,
+      timeout: Number(process.env.SOURCE_REPORT_TIMEOUT_MS || 60000),
+    },
+  );
+
+  return response.data;
+}

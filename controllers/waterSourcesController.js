@@ -1,6 +1,9 @@
 import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
+  interventions,
+  profiles,
+  reports,
   districts,
   regions,
   sensorReadings,
@@ -8,7 +11,10 @@ import {
   waterSources,
   alerts,
 } from "../db/schema.js";
-import { assessWaterSourceFailure } from "../services/droughtRiskClient.js";
+import {
+  assessWaterSourceFailure,
+  generateWaterSourceReport,
+} from "../services/droughtRiskClient.js";
 import { clearGovernmentWaterSourcesCache } from "../utils/governmentWaterSourcesCache.js";
 import { io } from "../index.js";
 
@@ -52,6 +58,18 @@ function toNullableNumber(value) {
   if (value === null || value === undefined) return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function daysSince(dateValue) {
+  if (!dateValue) return null;
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return Math.max(
+    0,
+    Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)),
+  );
 }
 
 function normalizeWaterSourceFeatureRow(row) {
@@ -170,6 +188,146 @@ function mergeSourceMetadata(feature, intelligence) {
       verifiedReportCount30Days: feature.verifiedReportCount30Days,
       villageDroughtRiskLevel: feature.villageDroughtRiskLevel,
     },
+  };
+}
+
+async function getWaterSourceReportContext(sourceId) {
+  const [sourceRow] = await db
+    .select()
+    .from(waterSources)
+    .innerJoin(villages, eq(waterSources.villageId, villages.id))
+    .leftJoin(districts, eq(villages.districtId, districts.id))
+    .leftJoin(regions, eq(districts.regionId, regions.id))
+    .where(eq(waterSources.id, sourceId))
+    .limit(1);
+
+  if (!sourceRow) {
+    return null;
+  }
+
+  const source = sourceRow.water_sources;
+  const village = sourceRow.villages;
+  const district = sourceRow.districts;
+  const region = sourceRow.regions;
+
+  const [
+    recentReports,
+    activeAlerts,
+    latestReadings,
+    relevantInterventions,
+    [metrics],
+  ] = await Promise.all([
+    db
+      .select({
+        id: reports.id,
+        content: reports.content,
+        severityLevel: reports.severityLevel,
+        status: reports.status,
+        actionTaken: reports.actionTaken,
+        isVerified: reports.isVerified,
+        reporterType: reports.reporterType,
+        createdAt: reports.createdAt,
+        userFullName: profiles.fullName,
+      })
+      .from(reports)
+      .leftJoin(profiles, eq(reports.userId, profiles.id))
+      .where(eq(reports.waterSourceId, sourceId))
+      .orderBy(desc(reports.createdAt), desc(reports.id))
+      .limit(8),
+    db
+      .select({
+        id: alerts.id,
+        message: alerts.message,
+        severity: alerts.severity,
+        createdAt: alerts.createdAt,
+      })
+      .from(alerts)
+      .where(and(eq(alerts.villageId, village.id), eq(alerts.isActive, true)))
+      .orderBy(desc(alerts.createdAt), desc(alerts.id))
+      .limit(5),
+    db
+      .select()
+      .from(sensorReadings)
+      .where(eq(sensorReadings.waterSourceId, sourceId))
+      .orderBy(desc(sensorReadings.createdAt), desc(sensorReadings.id))
+      .limit(5),
+    db
+      .select()
+      .from(interventions)
+      .where(
+        or(
+          eq(interventions.waterSourceId, sourceId),
+          eq(interventions.villageId, village.id),
+        ),
+      )
+      .orderBy(desc(interventions.createdAt), desc(interventions.id))
+      .limit(5),
+    db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE r.created_at >= NOW() - INTERVAL '7 days')::int AS recent_report_count_7_days,
+        COUNT(*) FILTER (WHERE r.created_at >= NOW() - INTERVAL '30 days')::int AS recent_report_count_30_days,
+        COUNT(*) FILTER (
+          WHERE r.created_at >= NOW() - INTERVAL '30 days'
+          AND LOWER(COALESCE(r.severity_level, '')) IN ('high', 'critical', 'severe')
+        )::int AS high_severity_report_count_30_days,
+        COUNT(*) FILTER (
+          WHERE r.created_at >= NOW() - INTERVAL '30 days'
+          AND r.is_verified = true
+        )::int AS verified_report_count_30_days
+      FROM reports r
+      WHERE r.water_source_id = ${sourceId}
+    `),
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    waterSource: {
+      id: source.id,
+      villageId: source.villageId,
+      name: source.name,
+      type: source.type,
+      status: source.status,
+      waterLevel: source.waterLevel,
+      latitude: source.latitude,
+      longitude: source.longitude,
+      lastMaintained: source.lastMaintained,
+    },
+    village: {
+      id: village.id,
+      name: village.name,
+      districtId: village.districtId,
+      latitude: village.latitude,
+      longitude: village.longitude,
+      droughtRiskLevel: village.droughtRiskLevel,
+    },
+    district: district
+      ? {
+          id: district.id,
+          name: district.name,
+          regionId: district.regionId,
+        }
+      : null,
+    region: region
+      ? {
+          id: region.id,
+          name: region.name,
+        }
+      : null,
+    summaryMetrics: {
+      recentReportCount7Days: toNumber(metrics?.recent_report_count_7_days),
+      recentReportCount30Days: toNumber(metrics?.recent_report_count_30_days),
+      highSeverityReportCount30Days: toNumber(
+        metrics?.high_severity_report_count_30_days,
+      ),
+      verifiedReportCount30Days: toNumber(
+        metrics?.verified_report_count_30_days,
+      ),
+      daysSinceMaintenance: daysSince(source.lastMaintained),
+    },
+    recentReports,
+    activeAlerts,
+    latestSensorReadings: latestReadings,
+    interventions: relevantInterventions,
   };
 }
 
@@ -741,6 +899,41 @@ export const getFailureIntelligenceById = async (req, res) => {
   }
 };
 
+export const generateSourceReport = async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Invalid water source id" });
+    }
+
+    const context = await getWaterSourceReportContext(id);
+    if (!context) {
+      return res.status(404).json({ message: "Water source not found" });
+    }
+
+    const report = await generateWaterSourceReport(context);
+
+    return res.json({
+      sourceId: id,
+      generatedAt: new Date().toISOString(),
+      report,
+      context: {
+        waterSource: context.waterSource,
+        village: context.village,
+        district: context.district,
+        region: context.region,
+        summaryMetrics: context.summaryMetrics,
+      },
+    });
+  } catch (error) {
+    console.error("POST /water-sources/:id/report error:", error);
+    return res.status(500).json({
+      message: "Water-source report generation failed",
+      error: error.response?.data?.detail || error.message,
+    });
+  }
+};
+
 export default {
   getAll,
   create,
@@ -750,4 +943,5 @@ export default {
   bulkUpdateStatus,
   getFailureIntelligence,
   getFailureIntelligenceById,
+  generateSourceReport,
 };
