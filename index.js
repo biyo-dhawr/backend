@@ -9,7 +9,18 @@ import reportRoutes from "./routes/reportRoutes.js";
 import apiRoutes from "./routes/apiRoutes.js";
 import predictionRoutes from "./routes/predictionRoutes.js";
 
+import http from "http";
+import { Server } from "socket.io";
+
 const app = express();
+const server = http.createServer(app);
+export const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    credentials: true,
+  },
+});
 
 app.use(cors(
   {
@@ -35,7 +46,7 @@ app.get("/", (req, res) => {
 async function start() {
   try {
     await ensureDatabase();
-    app.listen(process.env.PORT, () => {
+    server.listen(process.env.PORT, () => {
       console.log(`App is running on http://localhost:${process.env.PORT}`);
     });
   } catch (err) {

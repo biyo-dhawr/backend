@@ -17,7 +17,7 @@ export async function predictDroughtRisk(villages) {
     { villages },
     {
       headers,
-      timeout: Number(process.env.RISK_SERVICE_TIMEOUT_MS || 10000),
+      timeout: Number(process.env.RISK_SERVICE_TIMEOUT_MS || 60000), // Increased to 60s for batch processing
     },
   );
 

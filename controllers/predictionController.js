@@ -2,6 +2,7 @@ import { and, desc, eq, gte, ilike, lt, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { aiPredictions, alerts, villages } from "../db/schema.js";
 import { predictDroughtRisk } from "../services/droughtRiskClient.js";
+import { io } from "../index.js";
 
 function parseId(value) {
   if (value === undefined || value === null || value === "") {
@@ -330,25 +331,40 @@ export const runDroughtPrediction = async (req, res) => {
       return res.status(404).json({ message: "Village not found" });
     }
 
+    // 1. Get predictions from Python AI (Fast)
     const predictions = await predictInBatches(features);
+    
+    // 2. Save to DB in the background because 150 sequential queries to Supabase is very slow!
     const featuresByVillageId = new Map(
       features.map((feature) => [feature.villageId, feature]),
     );
-    const { saved, alertsCreated, insertedCount, updatedCount } =
-      await savePredictions(predictions, featuresByVillageId);
+    
+    savePredictions(predictions, featuresByVillageId)
+      .then(({ saved }) => {
+        // Emit event to other connected clients when DB finishes saving
+        io.emit("prediction_updated", {
+          message: "New predictions saved",
+          count: saved.length
+        });
+      })
+      .catch((err) => console.error("Background DB save failed:", err));
 
+    // 3. IMMEDIATELY return the AI predictions to the frontend!
     return res.json({
       success: true,
-      count: saved.length,
-      inserted: insertedCount,
-      updated: updatedCount,
-      alertsCreated: alertsCreated.length,
-      predictions: saved,
+      message: "AI prediction generated instantly!",
+      count: predictions.length,
+      // Pass the raw AI predictions back immediately so the UI can update without waiting for the DB
+      predictions: predictions.map(p => ({
+        ...p,
+        predictionDate: new Date(),
+        village: featuresByVillageId.get(p.villageId)
+      })),
     });
   } catch (error) {
     console.error("POST /predictions/drought error:", error);
     return res.status(500).json({
-      message: "Drought prediction failed",
+      message: "Failed to start drought prediction",
       error: error.response?.data?.detail || error.message,
     });
   }

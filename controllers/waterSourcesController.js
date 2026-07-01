@@ -10,6 +10,7 @@ import {
 } from "../db/schema.js";
 import { assessWaterSourceFailure } from "../services/droughtRiskClient.js";
 import { clearGovernmentWaterSourcesCache } from "../utils/governmentWaterSourcesCache.js";
+import { io } from "../index.js";
 
 function parsePositiveInteger(
   value,
@@ -135,8 +136,17 @@ async function getWaterSourceFailureFeatures({
 }
 
 function mergeSourceMetadata(feature, intelligence) {
+  if (!feature) return null;
   return {
+    // Spread Python response but override/alias fields for frontend compatibility
     ...intelligence,
+    // Alias Python field names → frontend expected names
+    failureRiskLevel: intelligence.riskLevel ?? intelligence.failureRiskLevel ?? "Low",
+    estimatedDaysToFailure: intelligence.estimatedFailureInDays ?? intelligence.estimatedDaysToFailure ?? null,
+    recommendation: (intelligence.recommendations ?? [])[0] ?? intelligence.recommendation ?? "",
+    recommendations: intelligence.recommendations ?? [],
+    reasons: intelligence.reasons ?? [],
+    // Attach source + village metadata
     waterSource: {
       id: feature.waterSourceId,
       name: feature.name,
@@ -374,6 +384,7 @@ export const create = async (req, res) => {
     const [source] = await db.insert(waterSources).values(values).returning();
 
     clearGovernmentWaterSourcesCache();
+    io.emit("water_source_updated", { sourceId: source.id });
     return res.status(201).json(source);
   } catch (error) {
     console.error("POST /water-sources error:", error);
@@ -449,6 +460,7 @@ export const updateStatus = async (req, res) => {
     }
 
     clearGovernmentWaterSourcesCache();
+    io.emit("water_source_updated", { sourceId: source.id });
     return res.json(source);
   } catch (error) {
     console.error("PATCH /water-sources/:id/status error:", error);
@@ -558,6 +570,7 @@ export const updateSource = async (req, res) => {
     }
 
     clearGovernmentWaterSourcesCache();
+    io.emit("water_source_updated", { sourceId: source.id });
     return res.json(source);
   } catch (error) {
     console.error("PUT /water-sources/:id error:", error);
@@ -582,6 +595,7 @@ export const deleteSource = async (req, res) => {
     }
 
     clearGovernmentWaterSourcesCache();
+    io.emit("water_source_updated", { deleted: true, sourceId: id });
     return res.json({ message: "Water source deleted" });
   } catch (error) {
     if (isForeignKeyViolation(error)) {
@@ -651,6 +665,7 @@ export const bulkUpdateStatus = async (req, res) => {
     }
 
     clearGovernmentWaterSourcesCache();
+    io.emit("water_source_updated", { bulk: true, count: updatedSources.length });
     return res.json({ message: "Status updated successfully", count: updatedSources.length });
   } catch (error) {
     console.error("PATCH /water-sources/bulk-status error:", error);
@@ -661,7 +676,8 @@ export const bulkUpdateStatus = async (req, res) => {
 export const getFailureIntelligence = async (req, res) => {
   try {
     const page = parsePositiveInteger(req.query.page, 1);
-    const limit = parsePositiveInteger(req.query.limit, 50, 200);
+    // Cap at 15 to keep Python service fast (<3s); clients can paginate
+    const limit = parsePositiveInteger(req.query.limit, 10, 15);
     const offset = (page - 1) * limit;
     const villageId =
       req.query.villageId === undefined ? null : parseId(req.query.villageId);
@@ -684,17 +700,11 @@ export const getFailureIntelligence = async (req, res) => {
     );
     const data = intelligence
       .map((item) => mergeSourceMetadata(featuresById.get(item.waterSourceId), item))
-      .sort((a, b) => b.priorityScore - a.priorityScore);
+      .filter(Boolean) // remove nulls (feature not found)
+      .sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0));
 
-    return res.json({
-      data,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
+    // Return flat array — frontend fetcher handles { data: [...] } and raw arrays
+    return res.json(data);
   } catch (error) {
     console.error("GET /water-sources/intelligence error:", error);
     return res.status(500).json({
